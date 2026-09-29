@@ -107,11 +107,11 @@ Dado que a solução lida com dados pessoais sensíveis e decisões de crédito,
 
 | Nome | Função |
 |---|---|
-| Nickolas Maia de Araújo | Lider |
-| Carlos Eduardo Fernandes Farias | Arquiteto de Soluções |
-| Endrigo Gustavo Brandão de Oliveira | Engenheiro de Software |
-| Tiago Bryan Ramos de Oliveira | Desenvolvedor Front |
-| Gustavo Mendes Ventieri Mariano | Desenvolvedor Backend |
+| [Nickolas Maia de Araujo](https://github.com/nickolss) | Lider |
+| [Carlos Eduardo Fernandes Farias](http://www.github.com/CarlosEduFF) | Arquiteto de Soluções |
+| [Endrigo Gustavo Brandão de Oliveira](http://github.com/endrigogustavo) | Engenheiro de Software |
+| [Tiago Bryan Ramos de Oliveira](https://github.com/tiagobryan) | Desenvolvedor Front |
+| [Gustavo Mendes Ventieri Mariano](http://github.com/gustavoventieri) | Desenvolvedor Backend |
 
 ---
 
