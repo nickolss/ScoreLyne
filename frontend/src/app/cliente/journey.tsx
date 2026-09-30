@@ -20,7 +20,7 @@ import {
 
 type Step = "inicio" | "consentimento" | "analise" | "resultado";
 
-const PERSONAS = APPLICANTS.filter((a) => ["maria", "ana", "luciana"].includes(a.id));
+const PERSONAS = APPLICANTS;
 
 const CONSENT_ITEMS: { key: FactorKey; detail: string; required?: boolean }[] = [
   { key: "recargas", detail: "Datas e frequência das recargas dos últimos 24 meses", required: true },
@@ -72,13 +72,13 @@ export function Journey() {
 
             <fieldset className="mt-10">
               <legend className="label text-ink-2">Escolha um perfil para simular</legend>
-              <div className="mt-3 grid sm:grid-cols-3 border border-ink">
+              <div className="mt-3 grid sm:grid-cols-3 lg:grid-cols-5 border border-ink">
                 {PERSONAS.map((p) => {
                   const active = p.id === personaId;
                   return (
                     <label
                       key={p.id}
-                      className={`cursor-pointer p-4 border-b sm:border-b-0 sm:border-r last:border-0 border-ink transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-cobalt has-[:focus-visible]:-outline-offset-4 ${
+                      className={`cursor-pointer p-4 border-b border-r border-ink transition-colors has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-cobalt has-[:focus-visible]:-outline-offset-4 ${
                         active ? "bg-cobalt text-on-cobalt" : "hover:bg-tint"
                       }`}
                     >

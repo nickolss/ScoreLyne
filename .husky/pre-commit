@@ -1,0 +1,2 @@
+# Roda ESLint em todos os arquivos .ts/.tsx do frontend que estão staged
+cd frontend && npm run lint
