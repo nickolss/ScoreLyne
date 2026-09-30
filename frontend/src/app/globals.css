@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+/* Mundo "Extrato da Linha": cobalto em campos inteiros, papel branco,
+   régua de 1px, zero raio. Mono só para números, datas e códigos. */
+:root {
+  --cobalt: #1d3cff;
+  --cobalt-deep: #0f26c9;
+  --on-cobalt: #ffffff;
+  --on-cobalt-2: #c9d1ff;
+  --paper: #ffffff;
+  --ink: #0a0f1f;
+  --ink-2: #454c63;
+  --rule: #d3d8ee;
+  --tint: #eef1ff;
+  --lime: #d7ff3a;
+  --red: #ff3b30;
+  --red-ink: #c8190f;
+  color-scheme: light;
+}
+
+@theme inline {
+  --color-cobalt: var(--cobalt);
+  --color-cobalt-deep: var(--cobalt-deep);
+  --color-on-cobalt: var(--on-cobalt);
+  --color-on-cobalt-2: var(--on-cobalt-2);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-rule: var(--rule);
+  --color-tint: var(--tint);
+  --color-lime: var(--lime);
+  --color-red: var(--red);
+  --color-red-ink: var(--red-ink);
+  --font-sans: var(--font-archivo);
+  --font-mono: var(--font-martian);
+  --radius-*: initial;
+}
+
+* {
+  border-radius: 0 !important;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+::selection {
+  background: var(--lime);
+  color: var(--ink);
+}
+
+:focus-visible {
+  outline: 2px solid var(--cobalt);
+  outline-offset: 2px;
+}
+
+.on-cobalt :focus-visible {
+  outline-color: var(--lime);
+}
+
+html {
+  scrollbar-color: var(--cobalt) var(--tint);
+}
+
+a {
+  text-underline-offset: 0.2em;
+  text-decoration-thickness: 1px;
+}
+
+input,
+textarea {
+  caret-color: var(--cobalt);
+}
+
+/* Display: Archivo alargado e pesado, como o cabeçalho de uma fatura. */
+.display {
+  font-family: var(--font-archivo);
+  font-variation-settings: "wdth" 118;
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 0.95;
+  text-wrap: balance;
+}
+
+.label {
+  font-family: var(--font-martian);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.num {
+  font-family: var(--font-martian);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Picote do canhoto e das separações do extrato. */
+.perf {
+  background-image: linear-gradient(to right, currentColor 50%, transparent 0);
+  background-size: 8px 1px;
+  background-repeat: repeat-x;
+  height: 1px;
+}
+
+.leader {
+  flex: 1;
+  min-width: 1rem;
+  align-self: end;
+  margin-bottom: 0.3em;
+  border-bottom: 1px dotted var(--rule);
+}
+
+/* O extrato é impresso linha a linha. */
+@keyframes print-line {
+  from {
+    clip-path: inset(0 100% 0 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+
+@keyframes feed {
+  from {
+    transform: translateY(-14px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+
+.print {
+  animation: print-line 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.feed {
+  animation: feed 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .print,
+  .feed {
+    animation: none;
+  }
+}
