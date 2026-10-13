@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BackendDown } from "@/components/backend-down";
+import { Copilot } from "@/components/copilot";
 import { BaseLine, DecisionBadge, FactorLines, ScoreScale, ScoreTotal } from "@/components/score";
 import { ApiError, banco, type Evento, type Solicitacao } from "@/lib/api";
 import { DECISION_LABEL, PLAN_LABEL, brl, fmtPts, maskPhone, pct } from "@/lib/data";
@@ -174,6 +175,21 @@ export default async function ApplicantPage(props: PageProps<"/banco/[id]">) {
               <div className="mt-4 border-t-2 border-ink">
                 <BaseLine base={a.pontos_base} />
                 <FactorLines factors={a.fatores} />
+              </div>
+            </section>
+          )}
+
+          {s.status !== "revogado" && (
+            <section>
+              <h2 className="display text-2xl">Pergunte ao copiloto.</h2>
+              <div className="mt-4">
+                <Copilot
+                  suggestions={[
+                    `Por que ${s.nome.split(" ")[0]} recebeu essa decisão? Explique fator por fator.`,
+                    `Quais os argumentos a favor e contra aprovar ${s.nome.split(" ")[0]}?`,
+                    `E se ${s.nome.split(" ")[0]} pedisse ${brl(s.valor_solicitado / 2)} em vez de ${brl(s.valor_solicitado)}?`,
+                  ]}
+                />
               </div>
             </section>
           )}

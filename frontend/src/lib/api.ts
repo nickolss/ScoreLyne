@@ -134,6 +134,22 @@ export type CartaoModelo = {
   >;
 };
 
+export type MensagemCopiloto = { papel: "analista" | "copiloto"; texto: string };
+
+export type StatusCopiloto = {
+  disponivel: boolean;
+  provedor: string | null;
+  modelo: string | null;
+  perguntas: string[];
+};
+
+export type RespostaCopiloto = {
+  resposta: string;
+  ferramentas: { nome: string; argumentos: Record<string, unknown>; erro: string | null }[];
+  provedor: string;
+  modelo: string;
+};
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -195,4 +211,7 @@ export const banco = {
   revogar: (id: string) =>
     req<Solicitacao>(`${BANCO_URL}/solicitacoes/${encodeURIComponent(id)}/revogar`, { method: "POST" }),
   modelo: () => req<CartaoModelo>(`${BANCO_URL}/modelo`),
+  copiloto: () => req<StatusCopiloto>(`${BANCO_URL}/copiloto`),
+  perguntar: (mensagens: MensagemCopiloto[]) =>
+    req<RespostaCopiloto>(`${BANCO_URL}/copiloto`, json({ mensagens })),
 };

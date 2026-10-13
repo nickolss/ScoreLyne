@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { BackendDown } from "@/components/backend-down";
+import { Copilot } from "@/components/copilot";
 import { ApiError, banco, type SolicitacaoResumo } from "@/lib/api";
 import { THRESHOLDS, brl } from "@/lib/data";
 import { ApplicantTable } from "./applicant-table";
@@ -54,7 +55,7 @@ export default async function BancoPage() {
           </dl>
         </div>
       </section>
-      <div className="mx-auto max-w-7xl px-4 sm:px-8 py-10">
+      <div className="mx-auto max-w-7xl px-4 sm:px-8 py-10 space-y-10">
         {rows.length ? (
           <ApplicantTable rows={rows} />
         ) : (
@@ -66,6 +67,7 @@ export default async function BancoPage() {
             </p>
           </div>
         )}
+        <Copilot />
       </div>
     </>
   );

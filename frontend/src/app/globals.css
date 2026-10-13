@@ -146,3 +146,54 @@ textarea {
     animation: none;
   }
 }
+
+/* Respostas do copiloto (markdown). */
+.md > * + * {
+  margin-top: 0.75em;
+}
+.md h1,
+.md h2,
+.md h3 {
+  font-weight: 700;
+}
+.md ul {
+  list-style: square;
+  padding-left: 1.25em;
+}
+.md ol {
+  list-style: decimal;
+  padding-left: 1.5em;
+}
+.md li + li {
+  margin-top: 0.25em;
+}
+.md hr {
+  border-color: var(--rule);
+}
+.md code {
+  font-family: var(--font-martian);
+  font-size: 0.85em;
+  background: var(--tint);
+  padding: 0 0.25em;
+}
+.md table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.md th,
+.md td {
+  border-bottom: 1px solid var(--rule);
+  padding: 0.4em 0.75em 0.4em 0;
+  text-align: left;
+  vertical-align: top;
+}
+.md th {
+  font-family: var(--font-martian);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--ink);
+}
