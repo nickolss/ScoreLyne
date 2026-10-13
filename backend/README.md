@@ -23,7 +23,8 @@ cd ../frontend && npm run dev        # terminal 3 · http://localhost:3000
 A operadora guarda os consentimentos em memória. Se ela reiniciar, rode `banco semear --limpar`
 de novo para as solicitações apontarem para consentimentos válidos.
 
-Outros comandos: `uv run score treinar` (retreina e grava `src/scorelyne/score/modelo.json`),
+Outros comandos: `uv run banco orchestrate --url <túnel>` (gera agente e ferramentas do watsonx
+Orchestrate em `../orchestrate/`), `uv run score treinar` (retreina e grava `src/scorelyne/score/modelo.json`),
 `uv run operadora exportar` (CSVs da base sintética em `data/`), `uv run pytest`.
 
 Variáveis: `OPERADORA_POPULACAO` (3000), `OPERADORA_SEMENTE` (42), `OPERADORA_DEMO` (1 liga
@@ -44,7 +45,13 @@ POST   /solicitacoes/{id}/revogar       revoga na operadora e apaga score e aná
 POST   /analises                        análise avulsa, sem registrar (ferramenta do agente)
 GET    /modelo                          cartão do modelo: importâncias, métricas, equidade,
                                         perda máxima de pontos ao omitir cada fator
+GET    /copiloto                        copiloto ligado? provedor, modelo e perguntas iniciais
+POST   /copiloto                        { mensagens: [{ papel: analista|copiloto, texto }] }
 ```
+
+O copiloto do analista conversa com o agente do watsonx Orchestrate (ou com um modelo do
+watsonx.ai) usando as credenciais do `backend/.env`, que o `banco servir` carrega sozinho. Como
+configurar e publicar o agente: `../orchestrate/README.md`.
 
 A trilha de auditoria só cresce: consentimento, dados recebidos, score, checagem de variáveis,
 decisão do agente e cada ação do analista ou do cliente.

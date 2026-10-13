@@ -19,7 +19,7 @@ from scorelyne.score.analise import ResultadoAnalise
 from scorelyne.score.fatores import ROTULOS
 from scorelyne.score.modelo import Escala, carregar_modelo
 
-from . import servico
+from . import agente, copiloto, servico
 from .db import criar_sessoes
 from .esquemas import DecisaoAnalista, NovaSolicitacao, Solicitacao, SolicitacaoResumo, Status
 from .servico import ErroBanco, Operadora
@@ -56,6 +56,30 @@ class CartaoModelo(BaseModel):
     equidade: dict
 
 
+def cartao_modelo() -> CartaoModelo:
+    m = carregar_modelo()
+    return CartaoModelo(
+        versao=m.versao,
+        fatores=[
+            FatorModelo(
+                chave=k,
+                rotulo=ROTULOS[k],
+                importancia=m.importancia[k],
+                obrigatorio=k in politica.ESCOPOS_OBRIGATORIOS,
+                ativo=m.coeficientes[k] != 0,
+                perda_maxima_se_omitir=round(
+                    m.escala.fator * abs(m.coeficientes[k]) * (100 - m.conservador[k]) / 100
+                ),
+            )
+            for k in ROTULOS
+        ],
+        limiares={"aprovacao": politica.LIMIAR_APROVACAO, "revisao": politica.LIMIAR_REVISAO},
+        escala=m.escala,
+        metricas=m.metricas,
+        equidade=m.equidade,
+    )
+
+
 def _sessao(request: Request) -> Iterator[Session]:
     with request.app.state.sessoes() as s:
         yield s
@@ -68,6 +92,7 @@ def create_app(
     db_url: str | None = None,
     operadora_url: str | None = None,
     transporte: httpx.BaseTransport | None = None,
+    assistente: copiloto.Provedor | None = None,
 ) -> FastAPI:
     sessoes = criar_sessoes(db_url)
     operadora = Operadora(
@@ -84,6 +109,7 @@ def create_app(
         description="Solicitações de crédito com score explicável a partir de dados telecom autorizados.",
     )
     app.state.sessoes = sessoes
+    assistente = assistente or copiloto.do_ambiente()
     app.add_middleware(
         CORSMiddleware,
         allow_origins=os.getenv("BANCO_CORS", "http://localhost:3000").split(","),
@@ -140,28 +166,31 @@ def create_app(
     def analisar_dados(pedido: PedidoAnaliseDados):
         return servico.analisar_com_tratamento(pedido.dados, pedido.valor_solicitado)
 
+    # --- Copiloto do analista (watsonx Orchestrate ou watsonx.ai) -------------
+
+    @app.get("/copiloto", tags=["copiloto"])
+    def copiloto_status():
+        perguntas = [p for _, _, p in agente.PERGUNTAS_INICIAIS]
+        if assistente is None:
+            return {"disponivel": False, "provedor": None, "modelo": None, "perguntas": perguntas}
+        return {
+            "disponivel": True,
+            "provedor": assistente.nome,
+            "modelo": assistente.modelo,
+            "perguntas": perguntas,
+        }
+
+    @app.post("/copiloto", response_model=copiloto.RespostaCopiloto, tags=["copiloto"])
+    def conversar(pedido: copiloto.PedidoCopiloto, s: Sessao):
+        """Responde ao analista com o agente do watsonx Orchestrate ou um modelo do watsonx.ai."""
+        if assistente is None:
+            raise ErroBanco(
+                503, "Copiloto desligado: configure WATSONX_APIKEY e ORCHESTRATE_* ou WATSONX_PROJECT_ID."
+            )
+        return assistente.responder(pedido, s, operadora)
+
     @app.get("/modelo", response_model=CartaoModelo, tags=["governanca"])
     def modelo():
-        m = carregar_modelo()
-        return CartaoModelo(
-            versao=m.versao,
-            fatores=[
-                FatorModelo(
-                    chave=k,
-                    rotulo=ROTULOS[k],
-                    importancia=m.importancia[k],
-                    obrigatorio=k in politica.ESCOPOS_OBRIGATORIOS,
-                    ativo=m.coeficientes[k] != 0,
-                    perda_maxima_se_omitir=round(
-                        m.escala.fator * abs(m.coeficientes[k]) * (100 - m.conservador[k]) / 100
-                    ),
-                )
-                for k in ROTULOS
-            ],
-            limiares={"aprovacao": politica.LIMIAR_APROVACAO, "revisao": politica.LIMIAR_REVISAO},
-            escala=m.escala,
-            metricas=m.metricas,
-            equidade=m.equidade,
-        )
+        return cartao_modelo()
 
     return app

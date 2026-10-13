@@ -1,0 +1,779 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "ScoreLyne — ferramentas do analista de crédito",
+    "version": "0.2.0",
+    "description": "Solicitações de crédito com score explicável a partir de dados telecom autorizados."
+  },
+  "servers": [
+    {
+      "url": "https://forbes-colours-field-accessories.trycloudflare.com"
+    }
+  ],
+  "paths": {
+    "/solicitacoes": {
+      "get": {
+        "tags": [
+          "solicitacoes"
+        ],
+        "summary": "Listar Solicitacoes",
+        "operationId": "listar_solicitacoes",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "title": "Status",
+              "nullable": true,
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/Status"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SolicitacaoResumo"
+                  },
+                  "title": "Response Listar Solicitacoes Solicitacoes Get"
+                }
+              }
+            }
+          }
+        },
+        "description": "Lista a fila de solicitações de crédito do banco, com nome, valor pedido, score, decisão do agente e status. Use o parâmetro status=revisao para ver só os casos que esperam um analista."
+      }
+    },
+    "/solicitacoes/{solicitacao_id}": {
+      "get": {
+        "tags": [
+          "solicitacoes"
+        ],
+        "summary": "Obter Solicitacao",
+        "operationId": "obter_solicitacao",
+        "parameters": [
+          {
+            "name": "solicitacao_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Solicitacao Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Solicitacao"
+                }
+              }
+            }
+          }
+        },
+        "description": "Traz uma solicitação completa: dados declarados, escopos autorizados, análise do score (pontos por fator, pontos fortes, pontos de atenção, plano de melhora e oferta), revisão humana e a trilha de auditoria. Use o id que aparece em listar_solicitacoes."
+      }
+    },
+    "/analises": {
+      "post": {
+        "tags": [
+          "analise"
+        ],
+        "summary": "Analisar Por Consentimento",
+        "description": "Recalcula score, decisão e oferta de uma linha para outro valor solicitado, sem registrar nada. Precisa do telefone e do consentimento_id de uma solicitação existente (obtidos em obter_solicitacao). Use para responder perguntas do tipo 'e se ela pedisse menos?'.",
+        "operationId": "simular_analise",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PedidoAnalise"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResultadoAnalise"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/modelo": {
+      "get": {
+        "tags": [
+          "governanca"
+        ],
+        "summary": "Modelo",
+        "operationId": "obter_cartao_modelo",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartaoModelo"
+                }
+              }
+            }
+          }
+        },
+        "description": "Cartão do modelo de score: versão, peso de cada fator, fatores obrigatórios, limiares de aprovação e revisão, métricas de validação (AUC, KS) e o monitor de equidade por região e por plano. Use para explicar como o score funciona e quais são as limitações conhecidas."
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CartaoModelo": {
+        "type": "object",
+        "required": [
+          "versao",
+          "fatores",
+          "limiares",
+          "escala",
+          "metricas",
+          "equidade"
+        ],
+        "title": "CartaoModelo",
+        "description": "Resumo público do modelo, para a página de governança e para auditoria.",
+        "properties": {
+          "versao": {
+            "type": "string",
+            "title": "Versao"
+          },
+          "fatores": {
+            "items": {
+              "$ref": "#/components/schemas/FatorModelo"
+            },
+            "type": "array",
+            "title": "Fatores"
+          },
+          "limiares": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "type": "object",
+            "title": "Limiares"
+          },
+          "escala": {
+            "$ref": "#/components/schemas/Escala"
+          },
+          "metricas": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "type": "object",
+            "title": "Metricas"
+          },
+          "equidade": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Equidade"
+          }
+        }
+      },
+      "Confianca": {
+        "type": "string",
+        "enum": [
+          "alta",
+          "baixa"
+        ],
+        "title": "Confianca"
+      },
+      "Decisao": {
+        "type": "string",
+        "enum": [
+          "aprovado",
+          "revisao",
+          "recusado"
+        ],
+        "title": "Decisao"
+      },
+      "Escala": {
+        "type": "object",
+        "title": "Escala",
+        "description": "Liga o score ao apetite de risco: o limiar de aprovação corresponde a `pd_aprovacao`\ne o de revisão a `pd_revisao`. Entre eles, o score é linear no log das chances.",
+        "properties": {
+          "pd_aprovacao": {
+            "type": "number",
+            "title": "Pd Aprovacao",
+            "default": 0.1
+          },
+          "pd_revisao": {
+            "type": "number",
+            "title": "Pd Revisao",
+            "default": 0.25
+          }
+        }
+      },
+      "Escopo": {
+        "type": "string",
+        "enum": [
+          "recargas",
+          "permanencia",
+          "pontualidade",
+          "estabilidade",
+          "consistencia"
+        ],
+        "title": "Escopo",
+        "description": "Escopos de consentimento. Um para cada fator do score, como na tela do cliente."
+      },
+      "Evento": {
+        "type": "object",
+        "required": [
+          "em",
+          "ator",
+          "tipo",
+          "titulo",
+          "detalhe"
+        ],
+        "title": "Evento",
+        "properties": {
+          "em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Em"
+          },
+          "ator": {
+            "type": "string",
+            "title": "Ator"
+          },
+          "tipo": {
+            "type": "string",
+            "title": "Tipo"
+          },
+          "titulo": {
+            "type": "string",
+            "title": "Titulo"
+          },
+          "detalhe": {
+            "title": "Detalhe",
+            "nullable": true,
+            "type": "string"
+          }
+        }
+      },
+      "FatorExplicado": {
+        "type": "object",
+        "required": [
+          "chave",
+          "rotulo",
+          "status",
+          "evidencia",
+          "pontos",
+          "valor_usado"
+        ],
+        "title": "FatorExplicado",
+        "properties": {
+          "chave": {
+            "$ref": "#/components/schemas/Escopo"
+          },
+          "rotulo": {
+            "type": "string",
+            "title": "Rotulo"
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusFator"
+          },
+          "valor": {
+            "title": "Valor",
+            "nullable": true,
+            "type": "number"
+          },
+          "evidencia": {
+            "type": "string",
+            "title": "Evidencia"
+          },
+          "dica": {
+            "title": "Dica",
+            "nullable": true,
+            "type": "string"
+          },
+          "pontos": {
+            "type": "number",
+            "title": "Pontos"
+          },
+          "valor_usado": {
+            "type": "number",
+            "title": "Valor Usado"
+          }
+        }
+      },
+      "FatorModelo": {
+        "type": "object",
+        "required": [
+          "chave",
+          "rotulo",
+          "importancia",
+          "obrigatorio",
+          "ativo",
+          "perda_maxima_se_omitir"
+        ],
+        "title": "FatorModelo",
+        "properties": {
+          "chave": {
+            "$ref": "#/components/schemas/Escopo"
+          },
+          "rotulo": {
+            "type": "string",
+            "title": "Rotulo"
+          },
+          "importancia": {
+            "type": "number",
+            "title": "Importancia"
+          },
+          "obrigatorio": {
+            "type": "boolean",
+            "title": "Obrigatorio"
+          },
+          "ativo": {
+            "type": "boolean",
+            "title": "Ativo"
+          },
+          "perda_maxima_se_omitir": {
+            "type": "integer",
+            "title": "Perda Maxima Se Omitir"
+          }
+        }
+      },
+      "Oferta": {
+        "type": "object",
+        "required": [
+          "limite",
+          "valor_ofertado",
+          "taxa_mensal",
+          "parcelas"
+        ],
+        "title": "Oferta",
+        "properties": {
+          "limite": {
+            "type": "number",
+            "title": "Limite"
+          },
+          "valor_ofertado": {
+            "type": "number",
+            "title": "Valor Ofertado"
+          },
+          "taxa_mensal": {
+            "type": "number",
+            "title": "Taxa Mensal"
+          },
+          "parcelas": {
+            "items": {
+              "$ref": "#/components/schemas/Parcela"
+            },
+            "type": "array",
+            "title": "Parcelas"
+          }
+        }
+      },
+      "Parcela": {
+        "type": "object",
+        "required": [
+          "prazo_meses",
+          "valor_parcela",
+          "total"
+        ],
+        "title": "Parcela",
+        "properties": {
+          "prazo_meses": {
+            "type": "integer",
+            "title": "Prazo Meses"
+          },
+          "valor_parcela": {
+            "type": "number",
+            "title": "Valor Parcela"
+          },
+          "total": {
+            "type": "number",
+            "title": "Total"
+          }
+        }
+      },
+      "PedidoAnalise": {
+        "type": "object",
+        "required": [
+          "telefone",
+          "consentimento_id"
+        ],
+        "title": "PedidoAnalise",
+        "properties": {
+          "telefone": {
+            "type": "string",
+            "pattern": "^\\d{10,11}$",
+            "title": "Telefone",
+            "example": "11987124821"
+          },
+          "consentimento_id": {
+            "type": "string",
+            "title": "Consentimento Id"
+          },
+          "valor_solicitado": {
+            "title": "Valor Solicitado",
+            "nullable": true,
+            "type": "number",
+            "minimum": 0.0,
+            "exclusiveMinimum": true
+          }
+        }
+      },
+      "ResultadoAnalise": {
+        "type": "object",
+        "required": [
+          "telefone",
+          "score",
+          "faixa",
+          "decisao",
+          "decisao_pelo_score",
+          "confianca",
+          "probabilidade_inadimplencia",
+          "pontos_base",
+          "fatores",
+          "pontos_fortes",
+          "pontos_de_atencao",
+          "motivos_revisao",
+          "plano_de_melhora",
+          "oferta",
+          "modelo_versao"
+        ],
+        "title": "ResultadoAnalise",
+        "properties": {
+          "telefone": {
+            "type": "string",
+            "title": "Telefone"
+          },
+          "score": {
+            "type": "integer",
+            "title": "Score"
+          },
+          "faixa": {
+            "type": "string",
+            "title": "Faixa"
+          },
+          "decisao": {
+            "$ref": "#/components/schemas/Decisao"
+          },
+          "decisao_pelo_score": {
+            "$ref": "#/components/schemas/Decisao"
+          },
+          "confianca": {
+            "$ref": "#/components/schemas/Confianca"
+          },
+          "probabilidade_inadimplencia": {
+            "type": "number",
+            "title": "Probabilidade Inadimplencia"
+          },
+          "pontos_base": {
+            "type": "number",
+            "title": "Pontos Base"
+          },
+          "fatores": {
+            "items": {
+              "$ref": "#/components/schemas/FatorExplicado"
+            },
+            "type": "array",
+            "title": "Fatores"
+          },
+          "pontos_fortes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pontos Fortes"
+          },
+          "pontos_de_atencao": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Pontos De Atencao"
+          },
+          "motivos_revisao": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Motivos Revisao"
+          },
+          "plano_de_melhora": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Plano De Melhora"
+          },
+          "oferta": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/Oferta"
+              }
+            ]
+          },
+          "modelo_versao": {
+            "type": "string",
+            "title": "Modelo Versao"
+          }
+        }
+      },
+      "RevisaoHumana": {
+        "type": "object",
+        "required": [
+          "veredito",
+          "justificativa",
+          "analista",
+          "em"
+        ],
+        "title": "RevisaoHumana",
+        "properties": {
+          "veredito": {
+            "$ref": "#/components/schemas/Veredito"
+          },
+          "justificativa": {
+            "type": "string",
+            "title": "Justificativa"
+          },
+          "analista": {
+            "type": "string",
+            "title": "Analista"
+          },
+          "em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Em"
+          }
+        }
+      },
+      "Solicitacao": {
+        "type": "object",
+        "required": [
+          "id",
+          "criado_em",
+          "nome",
+          "ocupacao",
+          "plano",
+          "valor_solicitado",
+          "score",
+          "decisao_agente",
+          "status",
+          "atualizado_em",
+          "telefone",
+          "cidade",
+          "uf",
+          "finalidade",
+          "consentimento_id",
+          "escopos",
+          "analise",
+          "revisao_humana",
+          "revogado_em",
+          "eventos"
+        ],
+        "title": "Solicitacao",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "criado_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Criado Em"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "ocupacao": {
+            "title": "Ocupacao",
+            "nullable": true,
+            "type": "string"
+          },
+          "plano": {
+            "title": "Plano",
+            "nullable": true,
+            "type": "string"
+          },
+          "valor_solicitado": {
+            "type": "number",
+            "title": "Valor Solicitado"
+          },
+          "score": {
+            "title": "Score",
+            "nullable": true,
+            "type": "integer"
+          },
+          "decisao_agente": {
+            "$ref": "#/components/schemas/Decisao"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          },
+          "atualizado_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Atualizado Em"
+          },
+          "telefone": {
+            "type": "string",
+            "title": "Telefone"
+          },
+          "cidade": {
+            "title": "Cidade",
+            "nullable": true,
+            "type": "string"
+          },
+          "uf": {
+            "title": "Uf",
+            "nullable": true,
+            "type": "string"
+          },
+          "finalidade": {
+            "type": "string",
+            "title": "Finalidade"
+          },
+          "consentimento_id": {
+            "type": "string",
+            "title": "Consentimento Id"
+          },
+          "escopos": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Escopos"
+          },
+          "analise": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ResultadoAnalise"
+              }
+            ]
+          },
+          "revisao_humana": {
+            "nullable": true,
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RevisaoHumana"
+              }
+            ]
+          },
+          "revogado_em": {
+            "title": "Revogado Em",
+            "nullable": true,
+            "type": "string",
+            "format": "date-time"
+          },
+          "eventos": {
+            "items": {
+              "$ref": "#/components/schemas/Evento"
+            },
+            "type": "array",
+            "title": "Eventos"
+          }
+        }
+      },
+      "SolicitacaoResumo": {
+        "type": "object",
+        "required": [
+          "id",
+          "criado_em",
+          "nome",
+          "ocupacao",
+          "plano",
+          "valor_solicitado",
+          "score",
+          "decisao_agente",
+          "status"
+        ],
+        "title": "SolicitacaoResumo",
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id"
+          },
+          "criado_em": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Criado Em"
+          },
+          "nome": {
+            "type": "string",
+            "title": "Nome"
+          },
+          "ocupacao": {
+            "title": "Ocupacao",
+            "nullable": true,
+            "type": "string"
+          },
+          "plano": {
+            "title": "Plano",
+            "nullable": true,
+            "type": "string"
+          },
+          "valor_solicitado": {
+            "type": "number",
+            "title": "Valor Solicitado"
+          },
+          "score": {
+            "title": "Score",
+            "nullable": true,
+            "type": "integer"
+          },
+          "decisao_agente": {
+            "$ref": "#/components/schemas/Decisao"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status"
+          }
+        }
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "aprovado",
+          "revisao",
+          "recusado",
+          "revogado"
+        ],
+        "title": "Status"
+      },
+      "StatusFator": {
+        "type": "string",
+        "enum": [
+          "calculado",
+          "nao_autorizado",
+          "nao_se_aplica"
+        ],
+        "title": "StatusFator"
+      },
+      "Veredito": {
+        "type": "string",
+        "enum": [
+          "aprovar",
+          "recusar"
+        ],
+        "title": "Veredito"
+      }
+    }
+  }
+}

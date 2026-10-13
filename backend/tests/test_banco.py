@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -156,3 +158,106 @@ def test_cartao_do_modelo(apis):
     assert fatores["estabilidade"]["perda_maxima_se_omitir"] == 0
     assert fatores["consistencia"]["perda_maxima_se_omitir"] > 0
     assert fatores["pontualidade"]["obrigatorio"]
+
+
+class _WatsonxFalso(httpx.BaseTransport):
+    """Simula o IAM e o chat do watsonx.ai: pede uma ferramenta e depois responde em texto."""
+
+    def __init__(self):
+        self.corpos: list[dict] = []
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        if request.url.host == "iam.cloud.ibm.com":
+            return httpx.Response(200, json={"access_token": "t", "expiration": 9e9})
+        corpo = json.loads(request.content)
+        self.corpos.append(corpo)
+        if len(self.corpos) == 1:
+            chamada = {
+                "id": "c1",
+                "type": "function",
+                "function": {"name": "listar_solicitacoes", "arguments": '{"status": "revisao"}'},
+            }
+            mensagem = {"role": "assistant", "content": "", "tool_calls": [chamada]}
+        else:
+            mensagem = {"role": "assistant", "content": "A Luciana está em revisão."}
+        return httpx.Response(200, json={"choices": [{"message": mensagem}]})
+
+
+def test_copiloto_chama_ferramenta_e_responde():
+    from scorelyne.banco.copiloto import ConfigWatsonx, Watsonx
+
+    operadora = TestClient(criar_operadora(tamanho_populacao=50, semente=1, demo=True))
+    falso = _WatsonxFalso()
+    banco = TestClient(
+        criar_banco(
+            db_url="sqlite://",
+            operadora_url="http://operadora",
+            transporte=_Ponte(operadora),
+            assistente=Watsonx(ConfigWatsonx("http://wx", "k", "p", None, "ibm/granite-4-h-small"), falso),
+        )
+    )
+    _pedir(operadora, banco, "luciana")
+
+    r = banco.post("/copiloto", json={"mensagens": [{"papel": "analista", "texto": "Quem está em revisão?"}]})
+
+    assert r.status_code == 200, r.text
+    corpo = r.json()
+    assert corpo["resposta"] == "A Luciana está em revisão."
+    assert corpo["ferramentas"] == [
+        {"nome": "listar_solicitacoes", "argumentos": {"status": "revisao"}, "erro": None}
+    ]
+    resultado = json.loads(falso.corpos[1]["messages"][-1]["content"])
+    assert [x["status"] for x in resultado] == ["revisao"]
+    assert falso.corpos[0]["project_id"] == "p"
+
+
+def test_copiloto_desligado_sem_credenciais(monkeypatch):
+    monkeypatch.delenv("WATSONX_APIKEY", raising=False)
+    banco = TestClient(criar_banco(db_url="sqlite://", operadora_url="http://operadora"))
+    status = banco.get("/copiloto").json()
+    assert status["disponivel"] is False and status["provedor"] is None
+    assert len(status["perguntas"]) == 4
+    r = banco.post("/copiloto", json={"mensagens": [{"papel": "analista", "texto": "oi"}]})
+    assert r.status_code == 503
+
+
+def test_copiloto_via_orchestrate(apis):
+    from scorelyne.banco.copiloto import ConfigOrchestrate, Orchestrate
+
+    pedidos: list[httpx.Request] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        if request.url.host == "iam.cloud.ibm.com":
+            return httpx.Response(200, json={"access_token": "t", "expiration": 9e9})
+        pedidos.append(request)
+        mensagem = {"role": "assistant", "content": "Versão 20261013-s42."}
+        return httpx.Response(
+            200, json={"model": "watsonx-orchestrate/frontier", "choices": [{"message": mensagem}]}
+        )
+
+    assistente = Orchestrate(
+        ConfigOrchestrate("https://wxo/instances/i", "k", "ag1"), httpx.MockTransport(responder)
+    )
+    banco = TestClient(
+        criar_banco(db_url="sqlite://", operadora_url="http://operadora", assistente=assistente)
+    )
+
+    assert banco.get("/copiloto").json()["provedor"] == "watsonx Orchestrate"
+    r = banco.post(
+        "/copiloto",
+        json={
+            "mensagens": [
+                {"papel": "analista", "texto": "Qual a versão?"},
+                {"papel": "copiloto", "texto": "Vou ver."},
+                {"papel": "analista", "texto": "E então?"},
+            ]
+        },
+    )
+
+    assert r.status_code == 200, r.text
+    assert r.json()["resposta"] == "Versão 20261013-s42."
+    assert r.json()["modelo"] == "watsonx-orchestrate/frontier"
+    assert pedidos[0].url.path == "/instances/i/v1/orchestrate/ag1/chat/completions"
+    assert pedidos[0].headers["authorization"] == "Bearer t"
+    papeis = [m["role"] for m in json.loads(pedidos[0].content)["messages"]]
+    assert papeis == ["user", "assistant", "user"]
