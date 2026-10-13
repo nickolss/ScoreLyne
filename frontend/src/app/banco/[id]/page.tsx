@@ -1,58 +1,53 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { DecisionBadge, FactorLines, ScoreScale, ScoreTotal } from "@/components/score";
-import {
-  APPLICANTS,
-  brl,
-  computeScore,
-  decide,
-  getApplicant,
-  monthlyRate,
-  suggestedLimit,
-  tenureLabel,
-} from "@/lib/data";
+import { BackendDown } from "@/components/backend-down";
+import { BaseLine, DecisionBadge, FactorLines, ScoreScale, ScoreTotal } from "@/components/score";
+import { ApiError, banco, type Evento, type Solicitacao } from "@/lib/api";
+import { DECISION_LABEL, PLAN_LABEL, brl, fmtPts, maskPhone, pct } from "@/lib/data";
 import { ReviewPanel } from "./review-panel";
 
-export function generateStaticParams() {
-  return APPLICANTS.map((a) => ({ id: a.id }));
+export const dynamic = "force-dynamic";
+
+async function load(id: string): Promise<Solicitacao | ApiError> {
+  try {
+    return await banco.obter(id);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 404) notFound();
+    return e instanceof ApiError ? e : new ApiError(500, "Erro ao carregar a solicitação.");
+  }
 }
 
 export async function generateMetadata(props: PageProps<"/banco/[id]">): Promise<Metadata> {
   const { id } = await props.params;
-  return { title: getApplicant(id)?.name ?? "Solicitante" };
+  const s = await load(id);
+  return { title: s instanceof ApiError ? "Solicitação" : s.nome };
 }
+
+const ATOR: Record<Evento["ator"], string> = {
+  cliente: "Cliente",
+  agente: "Agente",
+  analista: "Analista",
+  sistema: "Sistema",
+};
+
+const timeFmt = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
 
 export default async function ApplicantPage(props: PageProps<"/banco/[id]">) {
   const { id } = await props.params;
-  const a = getApplicant(id);
-  if (!a) notFound();
+  const s = await load(id);
+  if (s instanceof ApiError) return <BackendDown message={s.message} />;
 
-  const score = computeScore(a.factors);
-  const decision = decide(score);
-  const limit = suggestedLimit(score);
-
-  // Contribuição de cada fator em relação a um fator "neutro" de 50 pontos.
-  const ranked = [...a.factors]
-    .map((x) => ({ ...x, impact: Math.round((x.value - 50) * x.weight * 10) }))
-    .sort((p, q) => q.impact - p.impact);
-  const strengths = ranked.filter((x) => x.impact > 0).slice(0, 2);
-  const risks = ranked.filter((x) => x.impact < 0).reverse().slice(0, 2);
-
-  const trail = [
-    ["Consentimento registrado", "Finalidade: análise de crédito · validade 30 dias"],
-    ["Dados recebidos da operadora", `${a.factors.length} categorias autorizadas · sem dados brutos`],
-    ["Score calculado", `${score} pontos · modelo v0.3`],
-    ["Checagem de equidade", "Nenhuma variável sensível ou proxy detectada"],
-    [
-      "Decisão do agente",
-      decision === "revisao"
-        ? "Faixa intermediária: encaminhado a analista"
-        : decision === "aprovado"
-          ? "Pré-aprovação automática"
-          : "Recusa com plano de melhora enviado ao cliente",
-    ],
-  ];
+  const a = s.analise;
+  const ranked = a ? [...a.fatores].sort((p, q) => q.pontos - p.pontos) : [];
+  const strengths = ranked.filter((x) => x.pontos >= 5).slice(0, 2);
+  const risks = ranked.filter((x) => x.pontos <= -5).reverse().slice(0, 2);
+  const tenure = a?.fatores.find((f) => f.chave === "permanencia")?.evidencia.replace(" na mesma operadora", "");
 
   return (
     <>
@@ -63,99 +58,139 @@ export default async function ApplicantPage(props: PageProps<"/banco/[id]">) {
           </Link>
           <div className="mt-6 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <h1 className="display text-5xl sm:text-6xl">{a.name}</h1>
+              <h1 className="display text-5xl sm:text-6xl">{s.nome}</h1>
               <p className="mt-3 text-on-cobalt-2">
-                {a.age} anos · {a.occupation} · {a.city}
+                {[s.ocupacao, s.cidade && `${s.cidade}, ${s.uf}`, maskPhone(s.telefone)].filter(Boolean).join(" · ")}
               </p>
             </div>
-            <DecisionBadge decision={decision} />
+            <div className="text-right">
+              <DecisionBadge decision={s.status} />
+              {s.status !== s.decisao_agente && s.status !== "revogado" && (
+                <p className="mt-2 text-xs text-on-cobalt-2">Agente: {DECISION_LABEL[s.decisao_agente]}</p>
+              )}
+            </div>
           </div>
         </div>
       </section>
 
       <div className="mx-auto max-w-7xl px-4 sm:px-8 py-10 grid lg:grid-cols-[24rem_1fr] gap-8 items-start">
         <div className="space-y-8 lg:sticky lg:top-20">
-          <div className="border border-ink p-5">
-            <ScoreTotal score={score} />
-            <ScoreScale score={score} />
-            <dl className="grid grid-cols-2 border-t border-ink text-sm">
-              {[
-                ["Pedido", brl(a.requested), true],
-                ["Limite sugerido", limit ? brl(limit) : "—", true],
-                ["Plano", a.plan, false],
-                ["Na base há", tenureLabel(a.tenureMonths), false],
-                ["Finalidade", a.purpose, false],
-                ["Taxa indicativa", limit ? `${monthlyRate(score).toFixed(2).replace(".", ",")}% a.m.` : "—", true],
-              ].map(([k, v, mono], i) => (
-                <div key={k as string} className={`py-3 border-b border-rule ${i % 2 ? "pl-4" : "pr-4 border-r"}`}>
-                  <dt className="label text-ink-2">{k}</dt>
-                  <dd className={`mt-1 ${mono ? "num" : ""}`}>{v}</dd>
-                </div>
-              ))}
-            </dl>
-          </div>
+          {a ? (
+            <div className="border border-ink p-5">
+              <ScoreTotal score={a.score} faixa={a.faixa} />
+              <ScoreScale score={a.score} />
+              <dl className="grid grid-cols-2 border-t border-ink text-sm">
+                {[
+                  ["Pedido", brl(s.valor_solicitado), true],
+                  ["Limite sugerido", a.oferta ? brl(a.oferta.limite) : "—", true],
+                  ["Plano", s.plano ? PLAN_LABEL[s.plano] : "—", false],
+                  ["Na base há", tenure ?? "—", false],
+                  ["Finalidade", s.finalidade, false],
+                  ["Taxa indicativa", a.oferta ? `${a.oferta.taxa_mensal.toFixed(2).replace(".", ",")}% a.m.` : "—", true],
+                  ["Prob. de inadimplência", pct(a.probabilidade_inadimplencia, 1), true],
+                  ["Confiança", a.confianca === "alta" ? "Alta" : "Baixa", false],
+                ].map(([k, v, mono], i) => (
+                  <div key={k as string} className={`py-3 border-b border-rule ${i % 2 ? "pl-4" : "pr-4 border-r"}`}>
+                    <dt className="label text-ink-2">{k}</dt>
+                    <dd className={`mt-1 ${mono ? "num" : ""}`}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : (
+            <div className="border border-dashed border-ink p-5 text-sm">
+              <p className="font-semibold">Análise apagada</p>
+              <p className="mt-2 text-ink-2">
+                O cliente revogou o consentimento. Score e dados telecom foram descartados; fica só a trilha
+                de auditoria.
+              </p>
+            </div>
+          )}
 
-          <ReviewPanel name={a.name} decision={decision} />
+          {s.status !== "revogado" && (
+            <ReviewPanel
+              id={s.id}
+              name={s.nome}
+              agentDecision={s.decisao_agente}
+              review={s.revisao_humana}
+              reasons={a?.motivos_revisao ?? []}
+            />
+          )}
         </div>
 
         <div className="space-y-10">
-          <section>
-            <h2 className="display text-2xl">Explicação do agente.</h2>
-            <div className="mt-4 grid sm:grid-cols-2 border border-ink">
-              <div className="p-5 sm:border-r border-b sm:border-b-0 border-ink">
-                <p className="label"><span className="bg-lime px-1">A favor</span></p>
-                <ul className="mt-3 space-y-3 text-sm">
-                  {strengths.map((x) => (
-                    <li key={x.key}>
-                      <span className="flex items-baseline gap-2">
-                        <span className="font-semibold">{x.label}</span>
-                        <span className="leader" aria-hidden="true" />
-                        <span className="num">+{x.impact}</span>
-                      </span>
-                      <span className="block text-ink-2 mt-0.5">{x.evidence}</span>
-                    </li>
-                  ))}
-                </ul>
+          {a && (
+            <section>
+              <h2 className="display text-2xl">Explicação do agente.</h2>
+              <div className="mt-4 grid sm:grid-cols-2 border border-ink">
+                <div className="p-5 sm:border-r border-b sm:border-b-0 border-ink">
+                  <p className="label"><span className="bg-lime px-1">A favor</span></p>
+                  {strengths.length ? (
+                    <ul className="mt-3 space-y-3 text-sm">
+                      {strengths.map((x) => (
+                        <li key={x.chave}>
+                          <span className="flex items-baseline gap-2">
+                            <span className="font-semibold">{x.rotulo}</span>
+                            <span className="leader" aria-hidden="true" />
+                            <span className="num">{fmtPts(x.pontos)}</span>
+                          </span>
+                          <span className="block text-ink-2 mt-0.5">{x.evidencia}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-ink-2">Nenhum fator acima da média.</p>
+                  )}
+                </div>
+                <div className="p-5">
+                  <p className="label"><span className="bg-red text-paper px-1">Pontos de atenção</span></p>
+                  {risks.length ? (
+                    <ul className="mt-3 space-y-3 text-sm">
+                      {risks.map((x) => (
+                        <li key={x.chave}>
+                          <span className="flex items-baseline gap-2">
+                            <span className="font-semibold">{x.rotulo}</span>
+                            <span className="leader" aria-hidden="true" />
+                            <span className="num text-red-ink">{fmtPts(x.pontos)}</span>
+                          </span>
+                          <span className="block text-ink-2 mt-0.5">{x.evidencia}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-3 text-sm text-ink-2">Nenhum fator abaixo da média.</p>
+                  )}
+                </div>
               </div>
-              <div className="p-5">
-                <p className="label"><span className="bg-red text-paper px-1">Pontos de atenção</span></p>
-                {risks.length ? (
-                  <ul className="mt-3 space-y-3 text-sm">
-                    {risks.map((x) => (
-                      <li key={x.key}>
-                        <span className="flex items-baseline gap-2">
-                          <span className="font-semibold">{x.label}</span>
-                          <span className="leader" aria-hidden="true" />
-                          <span className="num text-red-ink">{x.impact}</span>
-                        </span>
-                        <span className="block text-ink-2 mt-0.5">{x.evidence}</span>
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-3 text-sm text-ink-2">Nenhum fator abaixo da média.</p>
-                )}
-              </div>
-            </div>
-          </section>
+            </section>
+          )}
 
-          <section>
-            <h2 className="display text-2xl">Fatores do score.</h2>
-            <div className="mt-4 border-t-2 border-ink">
-              <FactorLines factors={a.factors} />
-            </div>
-          </section>
+          {a && (
+            <section>
+              <h2 className="display text-2xl">Fatores do score.</h2>
+              <p className="mt-2 text-sm text-ink-2">
+                Pontos em relação a um cliente médio. Modelo {a.modelo_versao}.
+              </p>
+              <div className="mt-4 border-t-2 border-ink">
+                <BaseLine base={a.pontos_base} />
+                <FactorLines factors={a.fatores} />
+              </div>
+            </section>
+          )}
 
           <section>
             <h2 className="display text-2xl">Trilha de auditoria.</h2>
             <ol className="mt-4 border-t-2 border-ink">
-              {trail.map(([title, detail], i) => (
-                <li key={title} className="grid grid-cols-[2.5rem_1fr] py-3 border-b border-rule">
+              {s.eventos.map((e, i) => (
+                <li key={i} className="grid grid-cols-[2.5rem_1fr_auto] gap-x-3 py-3 border-b border-rule">
                   <span className="num text-xs text-ink-2 pt-0.5">{String(i + 1).padStart(2, "0")}</span>
                   <div>
-                    <p className="font-semibold text-sm">{title}</p>
-                    <p className="text-sm text-ink-2">{detail}</p>
+                    <p className="font-semibold text-sm">
+                      {e.titulo} <span className="label text-ink-2 font-normal ml-1">{ATOR[e.ator]}</span>
+                    </p>
+                    {e.detalhe && <p className="text-sm text-ink-2">{e.detalhe}</p>}
                   </div>
+                  <span className="num text-xs text-ink-2 pt-0.5 whitespace-nowrap">{timeFmt.format(new Date(e.em))}</span>
                 </li>
               ))}
             </ol>

@@ -4,14 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Arrow } from "@/components/icons";
 import { Barcode } from "@/components/score";
-import {
-  APPLICANTS,
-  MARIA_PHONE,
-  MARIA_RECHARGES,
-  computeScore,
-  fmtPts,
-  pts,
-} from "@/lib/data";
+import { MARIA_RECHARGES, MARIA_SNAPSHOT as maria, fmtPts } from "@/lib/data";
 
 const ROWS = 8;
 const STEP = 110; // ms entre linhas impressas
@@ -35,11 +28,10 @@ function useCountUp(target: number, delay: number) {
 }
 
 export function MariaStatement() {
-  const maria = APPLICANTS[0];
-  const score = computeScore(maria.factors);
+  const score = maria.score;
   const rows = MARIA_RECHARGES.slice(0, ROWS);
   const factorStart = (ROWS + 2) * STEP;
-  const totalAt = factorStart + (maria.factors.length + 1) * STEP;
+  const totalAt = factorStart + (maria.factors.length + 2) * STEP;
   const shown = useCountUp(score, totalAt);
   let n = 0;
   const d = () => ({ animationDelay: `${n++ * STEP}ms` });
@@ -61,18 +53,18 @@ export function MariaStatement() {
           </div>
           <div>
             <dt className="label text-ink-2">Linha</dt>
-            <dd className="num mt-0.5 whitespace-nowrap">{MARIA_PHONE}</dd>
+            <dd className="num mt-0.5 whitespace-nowrap">{maria.phone}</dd>
           </div>
           <div>
             <dt className="label text-ink-2">Desde</dt>
-            <dd className="num mt-0.5">07/2020</dd>
+            <dd className="num mt-0.5">{maria.since}</dd>
           </div>
         </dl>
       </header>
 
       <div className="px-5 sm:px-6 pt-3">
         <p className="label text-ink-2 print" style={d()}>
-          Recargas · últimos {ROWS} de 74 meses
+          Recargas · últimos {ROWS} de {maria.months} meses
         </p>
         <table className="w-full mt-1 text-xs">
           <tbody>
@@ -91,18 +83,23 @@ export function MariaStatement() {
 
       <div className="px-5 sm:px-6 pt-4">
         <p className="label text-ink-2 print" style={{ animationDelay: `${factorStart - STEP}ms` }}>
-          Fatores · nota × peso
+          Pontos por fator
         </p>
         <ul className="mt-1 text-xs">
+          <li className="print flex items-baseline gap-2 py-1 text-ink-2" style={{ animationDelay: `${factorStart}ms` }}>
+            <span>Cliente médio da base</span>
+            <span className="leader" aria-hidden="true" />
+            <span className="num">{fmtPts(maria.base, false)}</span>
+          </li>
           {maria.factors.map((x, i) => (
             <li
               key={x.key}
               className="print flex items-baseline gap-2 py-1"
-              style={{ animationDelay: `${factorStart + i * STEP}ms` }}
+              style={{ animationDelay: `${factorStart + (i + 1) * STEP}ms` }}
             >
               <span>{x.label}</span>
               <span className="leader" aria-hidden="true" />
-              <span className="num">{fmtPts(pts(x))}</span>
+              <span className={`num ${x.points < 0 ? "text-red-ink" : ""}`}>{fmtPts(x.points)}</span>
             </li>
           ))}
         </ul>
@@ -133,7 +130,7 @@ export function MariaStatement() {
               <Arrow />
             </span>
           </Link>
-          <Barcode value="MARIA-843" className="hidden sm:block h-10 w-28 text-ink" />
+          <Barcode value={`MARIA-${score}`} className="hidden sm:block h-10 w-28 text-ink" />
         </div>
       </div>
     </article>

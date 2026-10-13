@@ -95,8 +95,8 @@ export default function Home() {
             <p className="num text-sm text-cobalt">2/3</p>
             <h3 className="mt-3 text-2xl font-bold">O agente itemiza</h3>
             <p className="mt-3 text-ink-2 leading-relaxed">
-              Recargas, permanência, pontualidade e estabilidade do número viram fatores com nota e peso
-              fixos, iguais para todo mundo.
+              Recargas, permanência, pontualidade e consistência viram notas de 0 a 100. Cada uma soma ou
+              tira pontos em relação a um cliente médio, com a mesma régua para todo mundo.
             </p>
             <div className="mt-6 border border-ink p-4 text-sm">
               <div className="flex items-baseline gap-2">
@@ -104,7 +104,7 @@ export default function Home() {
                 <span className="leader" aria-hidden="true" />
               </div>
               <p className="num mt-2 text-right">
-                <span className="text-ink-2">92 × 30% =</span> 276,0
+                <span className="text-ink-2">100/100 →</span> +44,0 pts
               </p>
             </div>
           </li>

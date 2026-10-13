@@ -1,21 +1,15 @@
-import {
-  band,
-  type Decision,
-  DECISION_LABEL,
-  type Factor,
-  THRESHOLDS,
-  fmtPts,
-  pts,
-} from "@/lib/data";
+import type { FatorExplicado, Status } from "@/lib/api";
+import { band, DECISION_LABEL, THRESHOLDS, fmtPts } from "@/lib/data";
 
-const STAMP: Record<Decision, string> = {
+const STAMP: Record<Status, string> = {
   aprovado: "bg-lime text-ink border-ink",
   revisao: "bg-paper text-ink border-ink border-dashed",
   recusado: "bg-red text-paper border-red",
+  revogado: "bg-tint text-ink-2 border-ink-2 line-through",
 };
 
 // Carimbo de status, como o de uma fatura quitada.
-export function DecisionBadge({ decision }: { decision: Decision }) {
+export function DecisionBadge({ decision }: { decision: Status }) {
   return (
     <span className={`label inline-block border px-2 py-1 font-semibold ${STAMP[decision]}`}>
       {DECISION_LABEL[decision]}
@@ -71,7 +65,7 @@ export function ScoreScale({ score, tone = "paper" }: { score: number; tone?: "p
   );
 }
 
-export function ScoreTotal({ score }: { score: number }) {
+export function ScoreTotal({ score, faixa }: { score: number; faixa?: string }) {
   return (
     <div className="flex items-end justify-between gap-4">
       <div>
@@ -80,43 +74,66 @@ export function ScoreTotal({ score }: { score: number }) {
           <span className="bg-lime px-1 -mx-1 box-decoration-clone">{score}</span>
         </p>
       </div>
-      <p className="label text-ink-2 pb-1">{band(score)}</p>
+      <p className="label text-ink-2 pb-1">{faixa ?? band(score)}</p>
     </div>
   );
 }
 
-// Fatores como itens de extrato: nota × peso = pontos.
-export function FactorLines({ factors, showTips = false }: { factors: Factor[]; showTips?: boolean }) {
+const STATUS_NOTE: Record<Exclude<FatorExplicado["status"], "calculado">, string> = {
+  nao_autorizado: "Não autorizado",
+  nao_se_aplica: "Não se aplica",
+};
+
+// Fatores como itens de extrato: nota de 0 a 100 e pontos somados ou tirados em relação
+// a um cliente médio. A soma dos pontos com a base dá o score.
+export function FactorLines({ factors, showTips = false }: { factors: FatorExplicado[]; showTips?: boolean }) {
   return (
     <ul>
-      {factors.map((x) => (
-        <li key={x.key} className="py-4 border-b border-rule last:border-b-0">
-          <div className="flex items-baseline gap-2">
-            <span className="font-semibold">{x.label}</span>
-            <span className="leader max-sm:hidden" aria-hidden="true" />
-            <span className="num text-sm whitespace-nowrap ml-auto">
-              <span className="text-ink-2 text-xs">
-                {x.value} × {Math.round(x.weight * 100)}% ={" "}
+      {factors.map((x) => {
+        const calculated = x.status === "calculado" && x.valor !== null;
+        const value = x.valor ?? 0;
+        return (
+          <li key={x.chave} className="py-4 border-b border-rule last:border-b-0">
+            <div className="flex items-baseline gap-2">
+              <span className="font-semibold">{x.rotulo}</span>
+              <span className="leader max-sm:hidden" aria-hidden="true" />
+              <span className="num text-sm whitespace-nowrap ml-auto">
+                <span className="text-ink-2 text-xs">
+                  {calculated ? `${Math.round(value)}/100 → ` : `${STATUS_NOTE[x.status as keyof typeof STATUS_NOTE]} → `}
+                </span>
+                <span className={x.pontos < 0 ? "text-red-ink" : ""}>{fmtPts(x.pontos)} pts</span>
               </span>
-              {fmtPts(pts(x))}
-            </span>
-          </div>
-          <div className="mt-2 h-1.5 bg-tint">
-            <div
-              className={`h-full ${x.value >= 75 ? "bg-cobalt" : x.value >= 55 ? "bg-ink" : "bg-red"}`}
-              style={{ width: `${x.value}%` }}
-            />
-          </div>
-          <p className="mt-2 text-sm text-ink-2">{x.evidence}</p>
-          {showTips && x.tip && (
-            <p className="mt-3 text-sm">
-              <span className="bg-lime px-1 font-semibold box-decoration-clone">Como melhorar:</span>{" "}
-              {x.tip}
-            </p>
-          )}
-        </li>
-      ))}
+            </div>
+            <div className="mt-2 h-1.5 bg-tint">
+              {calculated && (
+                <div
+                  className={`h-full ${value >= 75 ? "bg-cobalt" : value >= 55 ? "bg-ink" : "bg-red"}`}
+                  style={{ width: `${value}%` }}
+                />
+              )}
+            </div>
+            <p className="mt-2 text-sm text-ink-2">{x.evidencia}</p>
+            {showTips && x.dica && (
+              <p className="mt-3 text-sm">
+                <span className="bg-lime px-1 font-semibold box-decoration-clone">Como melhorar:</span>{" "}
+                {x.dica}
+              </p>
+            )}
+          </li>
+        );
+      })}
     </ul>
+  );
+}
+
+// Linha de base da explicação: o score de um cliente médio, antes dos fatores.
+export function BaseLine({ base }: { base: number }) {
+  return (
+    <div className="flex items-baseline gap-2 py-3 border-b border-rule text-sm">
+      <span className="text-ink-2">Ponto de partida: cliente médio da base</span>
+      <span className="leader" aria-hidden="true" />
+      <span className="num">{fmtPts(base, false)} pts</span>
+    </div>
   );
 }
 

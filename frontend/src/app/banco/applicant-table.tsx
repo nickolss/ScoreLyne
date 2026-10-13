@@ -3,20 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { DecisionBadge } from "@/components/score";
-import { type Decision, DECISION_LABEL, THRESHOLDS, brl } from "@/lib/data";
+import type { SolicitacaoResumo, Status } from "@/lib/api";
+import { DECISION_LABEL, PLAN_LABEL, THRESHOLDS, brl } from "@/lib/data";
 
-export type Row = {
-  id: string;
-  name: string;
-  occupation: string;
-  plan: string;
-  requested: number;
-  submittedAt: string;
-  score: number;
-  decision: Decision;
-};
-
-const FILTERS: ("todas" | Decision)[] = ["todas", "revisao", "aprovado", "recusado"];
+const FILTERS: ("todas" | Status)[] = ["todas", "revisao", "aprovado", "recusado", "revogado"];
 
 const dateFmt = new Intl.DateTimeFormat("pt-BR", {
   day: "2-digit",
@@ -26,7 +16,8 @@ const dateFmt = new Intl.DateTimeFormat("pt-BR", {
 });
 
 // Mini-régua do score com os limiares, legível numa linha de tabela.
-function ScoreTick({ score }: { score: number }) {
+function ScoreTick({ score }: { score: number | null }) {
+  if (score === null) return <span className="num text-ink-2 block text-right">—</span>;
   return (
     <div className="flex items-center justify-end gap-3">
       <div className="relative w-24 h-2 bg-tint hidden md:block" aria-hidden="true">
@@ -41,15 +32,15 @@ function ScoreTick({ score }: { score: number }) {
   );
 }
 
-export function ApplicantTable({ rows }: { rows: Row[] }) {
+export function ApplicantTable({ rows }: { rows: SolicitacaoResumo[] }) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>("todas");
-  const visible = filter === "todas" ? rows : rows.filter((r) => r.decision === filter);
+  const visible = filter === "todas" ? rows : rows.filter((r) => r.status === filter);
 
   return (
     <div>
       <div className="flex flex-wrap border border-ink w-fit" role="tablist" aria-label="Filtrar por decisão">
         {FILTERS.map((f) => {
-          const count = f === "todas" ? rows.length : rows.filter((r) => r.decision === f).length;
+          const count = f === "todas" ? rows.length : rows.filter((r) => r.status === f).length;
           const active = f === filter;
           return (
             <button
@@ -76,7 +67,7 @@ export function ApplicantTable({ rows }: { rows: Row[] }) {
               <th className="label font-normal px-5 py-3">Plano</th>
               <th className="label font-normal px-5 py-3 text-right">Pedido</th>
               <th className="label font-normal px-5 py-3 text-right">Score</th>
-              <th className="label font-normal px-5 py-3">Decisão do agente</th>
+              <th className="label font-normal px-5 py-3">Situação</th>
               <th className="label font-normal px-5 py-3">Recebido</th>
             </tr>
           </thead>
@@ -89,19 +80,22 @@ export function ApplicantTable({ rows }: { rows: Row[] }) {
                     href={`/banco/${r.id}`}
                     className="font-bold after:absolute after:inset-0 group-hover:underline focus-visible:outline-none focus-visible:after:outline-2 focus-visible:after:outline-cobalt focus-visible:after:-outline-offset-2"
                   >
-                    {r.name}
+                    {r.nome}
                   </Link>
-                  <span className="block text-ink-2">{r.occupation}</span>
+                  <span className="block text-ink-2">{r.ocupacao}</span>
                 </td>
-                <td className="px-5 py-4 text-ink-2">{r.plan}</td>
-                <td className="px-5 py-4 text-right num">{brl(r.requested)}</td>
+                <td className="px-5 py-4 text-ink-2">{r.plano ? PLAN_LABEL[r.plano] : "—"}</td>
+                <td className="px-5 py-4 text-right num">{brl(r.valor_solicitado)}</td>
                 <td className="px-5 py-4">
                   <ScoreTick score={r.score} />
                 </td>
                 <td className="px-5 py-4">
-                  <DecisionBadge decision={r.decision} />
+                  <DecisionBadge decision={r.status} />
+                  {r.status !== r.decisao_agente && r.status !== "revogado" && (
+                    <span className="block mt-1 text-xs text-ink-2">agente: {DECISION_LABEL[r.decisao_agente]}</span>
+                  )}
                 </td>
-                <td className="px-5 py-4 num text-xs text-ink-2">{dateFmt.format(new Date(r.submittedAt))}</td>
+                <td className="px-5 py-4 num text-xs text-ink-2">{dateFmt.format(new Date(r.criado_em))}</td>
               </tr>
             ))}
           </tbody>
