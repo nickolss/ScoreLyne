@@ -1,0 +1,25 @@
+# Banco de dados do ScoreLyne (solicitações e trilha de auditoria).
+#   docker compose up -d
+# A API do banco conecta em postgresql+psycopg://scorelyne:scorelyne@localhost:5432/scorelyne
+# (troque a porta do host com BANCO_PORTA=5433 docker compose up -d se a 5432 estiver ocupada).
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: scorelyne-postgres
+    environment:
+      POSTGRES_USER: scorelyne
+      POSTGRES_PASSWORD: scorelyne
+      POSTGRES_DB: scorelyne
+    ports:
+      - "${BANCO_PORTA:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scorelyne -d scorelyne"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  pgdata:

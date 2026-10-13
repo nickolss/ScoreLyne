@@ -1,0 +1,113 @@
+{
+  "versao": "20261010-s42",
+  "treinado_em": "2026-10-10T23:52:49.353713Z",
+  "intercepto": 5.6643782925142325,
+  "coeficientes": {
+    "recargas": -1.4728706936037026,
+    "permanencia": -0.881898004753925,
+    "pontualidade": -5.79864657160683,
+    "estabilidade": 0.0,
+    "consistencia": -0.9779837175059585
+  },
+  "medias": {
+    "recargas": 83.608,
+    "permanencia": 70.983,
+    "pontualidade": 85.626,
+    "estabilidade": 94.8,
+    "consistencia": 67.308
+  },
+  "conservador": {
+    "recargas": 33.3,
+    "permanencia": 14.5,
+    "pontualidade": 16.4,
+    "estabilidade": 0.0,
+    "consistencia": 0.0
+  },
+  "importancia": {
+    "recargas": 0.1253,
+    "permanencia": 0.1256,
+    "pontualidade": 0.6286,
+    "estabilidade": 0.0,
+    "consistencia": 0.1205
+  },
+  "escala": {
+    "pd_aprovacao": 0.1,
+    "pd_revisao": 0.25
+  },
+  "metricas": {
+    "auc": 0.7333,
+    "gini": 0.4666,
+    "ks": 0.3779,
+    "taxa_inadimplencia": 0.1653,
+    "n_treino": 2100.0,
+    "n_teste": 900.0,
+    "fatores_ativos": 4.0,
+    "taxa_aprovacao_automatica": 0.4078,
+    "taxa_revisao": 0.4256,
+    "taxa_recusa": 0.1667,
+    "inadimplencia_aprovados": 0.0708,
+    "inadimplencia_recusados": 0.3867
+  },
+  "equidade": {
+    "regiao": {
+      "grupos": {
+        "Centro-Oeste": {
+          "n": 302,
+          "taxa_aprovacao": 0.4007,
+          "inadimplencia_real": 0.1391,
+          "inadimplencia_aprovados": 0.0413
+        },
+        "Nordeste": {
+          "n": 1211,
+          "taxa_aprovacao": 0.3939,
+          "inadimplencia_real": 0.1652,
+          "inadimplencia_aprovados": 0.0503
+        },
+        "Norte": {
+          "n": 308,
+          "taxa_aprovacao": 0.3734,
+          "inadimplencia_real": 0.1494,
+          "inadimplencia_aprovados": 0.0609
+        },
+        "Sudeste": {
+          "n": 878,
+          "taxa_aprovacao": 0.3986,
+          "inadimplencia_real": 0.1731,
+          "inadimplencia_aprovados": 0.0886
+        },
+        "Sul": {
+          "n": 301,
+          "taxa_aprovacao": 0.4219,
+          "inadimplencia_real": 0.186,
+          "inadimplencia_aprovados": 0.0472
+        }
+      },
+      "razao_impacto": 0.885,
+      "passa_regra_4_5": true
+    },
+    "plano": {
+      "grupos": {
+        "controle": {
+          "n": 801,
+          "taxa_aprovacao": 0.4794,
+          "inadimplencia_real": 0.1586,
+          "inadimplencia_aprovados": 0.0599
+        },
+        "pos_pago": {
+          "n": 589,
+          "taxa_aprovacao": 0.5212,
+          "inadimplencia_real": 0.1579,
+          "inadimplencia_aprovados": 0.0651
+        },
+        "pre_pago": {
+          "n": 1610,
+          "taxa_aprovacao": 0.3099,
+          "inadimplencia_real": 0.1714,
+          "inadimplencia_aprovados": 0.0601
+        }
+      },
+      "razao_impacto": 0.5946,
+      "passa_regra_4_5": false
+    }
+  }
+}
