@@ -26,6 +26,7 @@ from scorelyne.operadora.models import DadosLinha, Escopo
 from scorelyne.score import politica
 from scorelyne.score.analise import ResultadoAnalise
 from scorelyne.score.fatores import ROTULOS
+from scorelyne.score.formulas import RegistroFormulas, carregar_formulas
 from scorelyne.score.modelo import Escala, carregar_modelo
 
 from . import agente, copiloto, servico
@@ -264,5 +265,10 @@ def create_app(
     @app.get("/modelo", response_model=CartaoModelo, tags=["governanca"])
     def modelo():
         return cartao_modelo()
+
+    @app.get("/formulas", response_model=RegistroFormulas, tags=["governanca"])
+    def formulas():
+        """Registro versionado das fórmulas de cálculo do score."""
+        return carregar_formulas()
 
     return app

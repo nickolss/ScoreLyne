@@ -8,12 +8,14 @@ from scorelyne.operadora.models import DadosLinha
 
 from . import politica
 from .fatores import ROTULOS, Fator, StatusFator, calcular_fatores
+from .formulas import carregar_formulas
 from .modelo import Modelo, carregar_modelo, pontuar
 
 
 class FatorExplicado(Fator):
     pontos: float  # contribuição para o score, positiva ou negativa
     valor_usado: float  # valor que entrou no modelo, depois de imputação
+    formula_versao: str = ""  # versão da fórmula do fator em formulas.yaml
 
 
 class EscoposObrigatoriosAusentes(ValueError):
@@ -36,6 +38,7 @@ class ResultadoAnalise(BaseModel):
     plano_de_melhora: list[str]
     oferta: politica.Oferta | None
     modelo_versao: str
+    formulas_versao: str = ""  # versão do registro de fórmulas; vazio em análises antigas
 
 
 def analisar(
@@ -49,10 +52,14 @@ def analisar(
     fatores = calcular_fatores(dados)
     pontuacao = pontuar(fatores, modelo)
     contrib = {c.chave: c for c in pontuacao.contribuicoes}
+    formulas = carregar_formulas()
 
     explicados = [
         FatorExplicado(
-            **f.model_dump(), pontos=contrib[f.chave].pontos, valor_usado=contrib[f.chave].valor_usado
+            **f.model_dump(),
+            pontos=contrib[f.chave].pontos,
+            valor_usado=contrib[f.chave].valor_usado,
+            formula_versao=formulas.fator(f.chave).versao,
         )
         for f in fatores
     ]
@@ -109,4 +116,5 @@ def analisar(
         plano_de_melhora=plano,
         oferta=oferta,
         modelo_versao=modelo.versao,
+        formulas_versao=formulas.versao,
     )

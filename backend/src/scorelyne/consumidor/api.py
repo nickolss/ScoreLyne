@@ -15,6 +15,7 @@ from scorelyne.comum.auth import Autenticador
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.operadora.models import Consentimento
+from scorelyne.score.formulas import RegistroFormulas, carregar_formulas
 from scorelyne.score.modelo import carregar_modelo
 
 from . import servico
@@ -79,6 +80,11 @@ def create_app(
     @app.get("/saude", tags=["infra"])
     def saude():
         return {"status": "ok", "modelo": carregar_modelo().versao}
+
+    @app.get("/formulas", response_model=RegistroFormulas, tags=["transparencia"])
+    def formulas():
+        """Como o seu score é calculado: fórmulas versionadas, abertas a qualquer pessoa."""
+        return carregar_formulas()
 
     # --- Conta -------------------------------------------------------------------
 
