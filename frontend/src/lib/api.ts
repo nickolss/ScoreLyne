@@ -1,9 +1,10 @@
-// Cliente das APIs do backend. Os tipos espelham os modelos Pydantic de backend/src/scorelyne.
-//   operadora (porta 8001): personas da demo e consentimento
-//   banco     (porta 8002): solicitações, revisão humana e cartão do modelo
-
-export const OPERADORA_URL = process.env.NEXT_PUBLIC_OPERADORA_URL ?? "http://localhost:8001";
-export const BANCO_URL = process.env.NEXT_PUBLIC_BANCO_URL ?? "http://localhost:8002";
+// Contratos e clientes das APIs do backend. Os tipos espelham os modelos Pydantic de backend/src/scorelyne.
+//   consumidor (porta 8003): cadastro, consentimento, score próprio, assistente com IA, pedido ao credor
+//   credor     (porta 8002): fila de solicitações, revisão humana, cartão do modelo e copiloto do analista
+//
+// Os clientes recebem um `Fetcher`, então servem aos dois mundos:
+//   navegador -> lib/api-browser.ts (passa pelo proxy /api/<serviço>, que injeta o token do cookie httpOnly)
+//   servidor  -> lib/api-servidor.ts (chama o backend direto, com o token do cookie)
 
 export type Escopo = "recargas" | "permanencia" | "pontualidade" | "estabilidade" | "consistencia";
 export type Decisao = "aprovado" | "revisao" | "recusado";
@@ -38,6 +39,7 @@ export type FatorExplicado = {
   dica: string | null;
   pontos: number;
   valor_usado: number;
+  formula_versao: string;
 };
 
 export type Parcela = { prazo_meses: number; valor_parcela: number; total: number };
@@ -50,7 +52,7 @@ export type Oferta = {
 };
 
 export type ResultadoAnalise = {
-  telefone: string;
+  telefone?: string; // o credor recebe; o consumidor não precisa dele
   score: number;
   faixa: string;
   decisao: Decisao;
@@ -65,6 +67,7 @@ export type ResultadoAnalise = {
   plano_de_melhora: string[];
   oferta: Oferta | null;
   modelo_versao: string;
+  formulas_versao: string;
 };
 
 export type Evento = {
@@ -108,11 +111,34 @@ export type Solicitacao = SolicitacaoResumo & {
   eventos: Evento[];
 };
 
+// O que o consumidor vê do próprio pedido: sem trilha interna nem dados de terceiros.
+export type SituacaoSolicitacao = {
+  id: string;
+  status: Status;
+  decisao_agente: Decisao;
+  score: number | null;
+  oferta: Oferta | null;
+  motivos_revisao: string[];
+  revisao_humana: RevisaoHumana | null;
+  atualizado_em: string;
+};
+
 export type GrupoEquidade = {
   n: number;
   taxa_aprovacao: number;
   inadimplencia_real: number;
   inadimplencia_aprovados: number | null;
+  pd_prevista: number;
+  margem_95: number;
+  calibrado: boolean;
+};
+
+export type DimensaoEquidade = {
+  grupos: Record<string, GrupoEquidade>;
+  razao_impacto: number | null;
+  passa_regra_4_5: boolean;
+  erro_calibracao_maximo: number | null;
+  calibrado_em_todos_os_grupos: boolean;
 };
 
 export type CartaoModelo = {
@@ -128,27 +154,99 @@ export type CartaoModelo = {
   limiares: { aprovacao: number; revisao: number };
   escala: { pd_aprovacao: number; pd_revisao: number };
   metricas: Record<string, number>;
-  equidade: Record<
-    string,
-    { grupos: Record<string, GrupoEquidade>; razao_impacto: number | null; passa_regra_4_5: boolean }
-  >;
+  equidade: Record<string, DimensaoEquidade>;
 };
 
-export type MensagemCopiloto = { papel: "analista" | "copiloto"; texto: string };
+export type FormulaFator = {
+  id: Escopo;
+  rotulo: string;
+  versao: string;
+  formula: string;
+  entradas: string[];
+  parametros: Record<string, unknown>;
+  observacao: string;
+};
 
-export type StatusCopiloto = {
+export type RegistroFormulas = {
+  versao: string;
+  atualizado_em: string;
+  fatores: FormulaFator[];
+  modelo: {
+    versao: string;
+    formula_score: string;
+    formula_pontos_fator: string;
+    formula_escala: string;
+    formula_probabilidade: string;
+    parametros: Record<string, unknown>;
+    observacao: string;
+  };
+  politica: {
+    versao: string;
+    parametros: Record<string, unknown>;
+    formulas: Record<string, string>;
+    regras_de_supervisao: string[];
+  };
+};
+
+// --- Consumidor ---------------------------------------------------------------------
+
+export type Cliente = {
+  id: string;
+  nome: string;
+  cpf: string;
+  telefone: string;
+  ocupacao: string | null;
+  cidade: string | null;
+  uf: string | null;
+  consentimento_ativo: boolean;
+  escopos: Escopo[];
+  enviado_ao_credor: boolean;
+};
+
+export type MeuScore = {
+  valor_solicitado: number;
+  finalidade: string;
+  calculado_em: string;
+  escopos: Escopo[];
+  analise: ResultadoAnalise;
+};
+
+export type SessaoLogin = { token: string; tipo: string };
+export type SessaoConsumidor = SessaoLogin & { cliente: Cliente };
+export type SessaoAnalista = SessaoLogin & { nome: string };
+
+export type Cadastro = {
+  nome: string;
+  cpf: string;
+  telefone: string;
+  senha: string;
+  ocupacao?: string;
+  cidade?: string;
+  uf?: string;
+};
+
+export type AtualizarDados = { telefone?: string; ocupacao?: string; cidade?: string; uf?: string };
+
+// --- Chat com IA (assistente do consumidor e copiloto do analista) ---------------------
+
+export type StatusChat = {
   disponivel: boolean;
   provedor: string | null;
   modelo: string | null;
   perguntas: string[];
 };
 
-export type RespostaCopiloto = {
+export type RespostaChat = {
   resposta: string;
   ferramentas: { nome: string; argumentos: Record<string, unknown>; erro: string | null }[];
   provedor: string;
   modelo: string;
 };
+
+export type MensagemCopiloto = { papel: "analista" | "copiloto"; texto: string };
+export type MensagemAssistente = { papel: "cliente" | "assistente"; texto: string };
+
+// --- HTTP -----------------------------------------------------------------------------
 
 export class ApiError extends Error {
   constructor(
@@ -159,16 +257,14 @@ export class ApiError extends Error {
   }
 }
 
-async function req<T>(url: string, init?: RequestInit): Promise<T> {
+export type Fetcher = (caminho: string, init?: RequestInit) => Promise<Response>;
+
+async function chamar<T>(f: Fetcher, caminho: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(url, {
-      ...init,
-      cache: "no-store",
-      headers: { "Content-Type": "application/json", ...init?.headers },
-    });
+    res = await f(caminho, init);
   } catch {
-    throw new ApiError(0, `Não foi possível conectar a ${new URL(url).origin}. O serviço está no ar?`);
+    throw new ApiError(0, "Não foi possível conectar ao serviço. Ele está no ar?");
   }
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -180,38 +276,57 @@ async function req<T>(url: string, init?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-const json = (body: unknown) => ({ method: "POST", body: JSON.stringify(body) });
+const enviar = (method: string, body?: unknown): RequestInit => ({
+  method,
+  body: body === undefined ? undefined : JSON.stringify(body),
+});
 
-export const operadora = {
-  personas: () => req<PersonaDemo[]>(`${OPERADORA_URL}/demo/personas`),
-  consentir: (p: { telefone: string; cpf: string; escopos: Escopo[] }) =>
-    req<Consentimento>(
-      `${OPERADORA_URL}/consentimentos`,
-      json({ ...p, finalidade: "analise_de_credito", solicitante: "Banco Parceiro S.A." }),
-    ),
-};
+export function criarCredor(f: Fetcher) {
+  const get = <T>(caminho: string) => chamar<T>(f, caminho);
+  const id = (x: string) => encodeURIComponent(x);
+  return {
+    login: (p: { email: string; senha: string }) =>
+      chamar<SessaoAnalista>(f, "/login", enviar("POST", p)),
+    listar: () => get<SolicitacaoResumo[]>("/solicitacoes"),
+    obter: (x: string) => get<Solicitacao>(`/solicitacoes/${id(x)}`),
+    decidir: (x: string, p: { veredito: "aprovar" | "recusar"; justificativa: string }) =>
+      chamar<Solicitacao>(f, `/solicitacoes/${id(x)}/decisao`, enviar("POST", p)),
+    desfazer: (x: string) => chamar<Solicitacao>(f, `/solicitacoes/${id(x)}/decisao`, enviar("DELETE")),
+    modelo: () => get<CartaoModelo>("/modelo"),
+    formulas: () => get<RegistroFormulas>("/formulas"),
+    copiloto: () => get<StatusChat>("/copiloto"),
+    perguntar: (mensagens: MensagemCopiloto[]) =>
+      chamar<RespostaChat>(f, "/copiloto", enviar("POST", { mensagens })),
+  };
+}
 
-export const banco = {
-  listar: () => req<SolicitacaoResumo[]>(`${BANCO_URL}/solicitacoes`),
-  obter: (id: string) => req<Solicitacao>(`${BANCO_URL}/solicitacoes/${encodeURIComponent(id)}`),
-  criar: (p: {
-    nome: string;
-    telefone: string;
-    consentimento_id: string;
-    valor_solicitado: number;
-    finalidade: string;
-    ocupacao?: string;
-    cidade?: string;
-    uf?: string;
-  }) => req<Solicitacao>(`${BANCO_URL}/solicitacoes`, json(p)),
-  decidir: (id: string, p: { veredito: "aprovar" | "recusar"; justificativa: string }) =>
-    req<Solicitacao>(`${BANCO_URL}/solicitacoes/${encodeURIComponent(id)}/decisao`, json(p)),
-  desfazer: (id: string) =>
-    req<Solicitacao>(`${BANCO_URL}/solicitacoes/${encodeURIComponent(id)}/decisao`, { method: "DELETE" }),
-  revogar: (id: string) =>
-    req<Solicitacao>(`${BANCO_URL}/solicitacoes/${encodeURIComponent(id)}/revogar`, { method: "POST" }),
-  modelo: () => req<CartaoModelo>(`${BANCO_URL}/modelo`),
-  copiloto: () => req<StatusCopiloto>(`${BANCO_URL}/copiloto`),
-  perguntar: (mensagens: MensagemCopiloto[]) =>
-    req<RespostaCopiloto>(`${BANCO_URL}/copiloto`, json({ mensagens })),
-};
+export function criarConsumidor(f: Fetcher) {
+  const get = <T>(caminho: string) => chamar<T>(f, caminho);
+  return {
+    cadastrar: (p: Cadastro) => chamar<Cliente>(f, "/cadastro", enviar("POST", p)),
+    login: (p: { cpf: string; senha: string }) =>
+      chamar<SessaoConsumidor>(f, "/login", enviar("POST", p)),
+    eu: () => get<Cliente>("/me"),
+    atualizar: (p: AtualizarDados) => chamar<Cliente>(f, "/meus-dados", enviar("PATCH", p)),
+    consentir: (escopos: Escopo[]) => chamar<Consentimento>(f, "/consentimentos", enviar("POST", { escopos })),
+    calcular: (p: { valor_solicitado: number; finalidade: string }) =>
+      chamar<MeuScore>(f, "/meu-score", enviar("POST", p)),
+    meuScore: () => get<MeuScore>("/meu-score"),
+    revogar: () => chamar<Cliente>(f, "/revogar", enviar("POST")),
+    enviarAoCredor: () => chamar<Cliente>(f, "/enviar-ao-credor", enviar("POST")),
+    minhaSolicitacao: () => get<SituacaoSolicitacao>("/minha-solicitacao"),
+    retirarDoCredor: () => chamar<Cliente>(f, "/retirar-do-credor", enviar("POST")),
+    assistente: () => get<StatusChat>("/assistente"),
+    perguntarAoAssistente: (mensagens: MensagemAssistente[]) =>
+      chamar<RespostaChat>(f, "/assistente", enviar("POST", { mensagens })),
+    formulas: () => get<RegistroFormulas>("/formulas"),
+    modelo: () => get<CartaoModelo>("/modelo"),
+  };
+}
+
+export function criarOperadora(f: Fetcher) {
+  return { personas: () => chamar<PersonaDemo[]>(f, "/demo/personas") };
+}
+
+export type ApiConsumidor = ReturnType<typeof criarConsumidor>;
+export type ApiCredor = ReturnType<typeof criarCredor>;
