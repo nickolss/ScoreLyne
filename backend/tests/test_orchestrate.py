@@ -32,3 +32,16 @@ def test_agente_usa_as_mesmas_instrucoes_e_ferramentas_do_copiloto():
     assert definicao["llm"] == "watsonx/ibm/granite-4-h-small"
     assert definicao["instructions"] == agente.INSTRUCOES
     assert definicao["tools"] == [f.nome for f in agente.FERRAMENTAS]
+
+
+def test_spec_autentica_o_agente_por_chave_e_nao_por_argumento():
+    spec = gerar_spec("http://x")
+    assert spec["components"]["securitySchemes"]["agenteKey"] == {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-Agent-Key",
+    }
+    for caminho in spec["paths"].values():
+        for op in caminho.values():
+            assert op["security"] == [{"agenteKey": []}]
+            assert not any(p["name"].lower().startswith("x-") for p in op.get("parameters", []))
