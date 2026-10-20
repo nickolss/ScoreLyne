@@ -3,25 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from scorelyne.comum.contratos import RevisaoHumana, SituacaoSolicitacao, Status, Veredito
 from scorelyne.score.analise import ResultadoAnalise
 from scorelyne.score.politica import Decisao
-
-
-class Status(StrEnum):
-    APROVADO = "aprovado"
-    REVISAO = "revisao"
-    RECUSADO = "recusado"
-    REVOGADO = "revogado"
-
-
-class Veredito(StrEnum):
-    APROVAR = "aprovar"
-    RECUSAR = "recusar"
 
 
 class NovaSolicitacao(BaseModel):
@@ -33,6 +21,9 @@ class NovaSolicitacao(BaseModel):
     ocupacao: str | None = None
     cidade: str | None = None
     uf: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
+
+
+__all__ = ["RevisaoHumana", "SituacaoSolicitacao", "Status", "Veredito"]
 
 
 class LoginAnalista(BaseModel):
@@ -59,13 +50,6 @@ class Evento(BaseModel):
     tipo: str
     titulo: str
     detalhe: str | None
-
-
-class RevisaoHumana(BaseModel):
-    veredito: Veredito
-    justificativa: str
-    analista: str
-    em: datetime
 
 
 class SolicitacaoResumo(BaseModel):
