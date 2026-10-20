@@ -62,6 +62,24 @@ function ErrorBox({ message, onRetry }: { message: string; onRetry?: () => void 
   );
 }
 
+// Quem paga a plataforma e o que isso muda para quem pede crédito. Fica à vista antes do consentimento e
+// antes do envio do pedido, porque é aí que um incentivo financeiro poderia pesar. Veja docs/MVP.md.
+function AvisoRemuneracao({ className = "" }: { className?: string }) {
+  return (
+    <aside className={`border border-ink ${className}`} aria-labelledby="aviso-remuneracao">
+      <h2 id="aviso-remuneracao" className="label px-4 py-2 bg-tint border-b border-ink">
+        Como a ScoreLyne ganha dinheiro
+      </h2>
+      <ul className="p-4 space-y-1.5 text-sm">
+        <li>· Você não paga nada.</li>
+        <li>· O banco parceiro paga um valor fixo por análise, aprovada ou não.</li>
+        <li>· Não ganhamos comissão se o seu crédito for aprovado, então não temos motivo para empurrar um pedido.</li>
+        <li>· Hoje há um só banco parceiro e nenhum é destacado por pagar mais.</li>
+      </ul>
+    </aside>
+  );
+}
+
 const maskCpf = (c: string) => `${c.slice(0, 3)}.•••.•••-${c.slice(-2)}`;
 
 export function Jornada({
@@ -398,6 +416,8 @@ function ConsentStep({
           );
         })}
       </ul>
+
+      <AvisoRemuneracao className="mt-6" />
 
       <div className="mt-6 border border-dashed border-ink p-4">
         <p className="label">Nunca usamos</p>
@@ -782,6 +802,7 @@ function ResultadoStep({
             pedido de {brl(score.valor_solicitado)} vai para a fila. Você acompanha a decisão aqui e pode
             retirar o pedido quando quiser.
           </p>
+          <AvisoRemuneracao className="mt-4" />
           <button onClick={enviar} disabled={acao !== null} className={`${btnPrimary} mt-4 w-full sm:w-auto`}>
             {acao === "enviar" ? "Enviando…" : "Enviar pedido ao banco"} <Arrow />
           </button>

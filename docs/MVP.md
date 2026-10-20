@@ -91,14 +91,14 @@ A conta é `plano ÷ (preço − custo variável)`. Se a cessão do dado consumi
 - As fórmulas, os pesos e a equidade são públicos e versionados, e toda decisão tem trilha de auditoria.
 - O assistente não promete aprovação, só enxerga os dados de quem está logado e orienta a pedir revisão humana.
 - Casos intermediários vão para um analista, e o consumidor vê a justificativa.
+- A tela de consentimento e a caixa de envio do pedido mostram ao consumidor como a plataforma ganha dinheiro: ele não paga, o banco paga um valor fixo por análise, não há comissão por crédito aprovado e nenhum banco é destacado por pagar mais. O texto descreve o modelo que pretendemos adotar; se o modelo mudar, a tela precisa mudar junto.
 
 ### O que recomendamos e ainda não está feito
 
 1. **Cobrar por análise, nunca por crédito concedido ou aprovado**, para a plataforma não ganhar com a decisão.
-2. **Mostrar ao consumidor, na tela de consentimento, como a plataforma é remunerada** e quem paga.
-3. **Não ranquear nem destacar credores por quanto pagam.** Se houver mais de um banco, mostrar os critérios de ordenação.
-4. **Auditoria independente do modelo** e publicação periódica do monitor de equidade.
-5. **Separação societária ou contratual** se a operadora parceira também operar crédito: ela passaria a ser, ao mesmo tempo, dona do dado e concorrente de quem empresta.
+2. **Não ranquear nem destacar credores por quanto pagam.** Se houver mais de um banco, mostrar os critérios de ordenação.
+3. **Auditoria independente do modelo** e publicação periódica do monitor de equidade.
+4. **Separação societária ou contratual** se a operadora parceira também operar crédito: ela passaria a ser, ao mesmo tempo, dona do dado e concorrente de quem empresta.
 
 ## Limites conhecidos
 
