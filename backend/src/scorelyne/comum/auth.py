@@ -20,7 +20,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from .erros import ErroApi
 
 _N, _R, _P = 2**14, 8, 1
-_bearer = HTTPBearer(auto_error=False)
+bearer = HTTPBearer(auto_error=False)
 
 
 def hash_senha(senha: str) -> str:
@@ -36,6 +36,13 @@ def senha_confere(senha: str, armazenado: str) -> bool:
     except ValueError:
         return False
     return hmac.compare_digest(calculado.hex(), h)
+
+
+def chave_valida(recebida: str | None, esperada: str | None) -> bool:
+    """Compara chaves de serviço em tempo constante. Sem chave configurada, nada passa."""
+    if not recebida or not esperada:
+        return False
+    return hmac.compare_digest(recebida.encode(), esperada.encode())
 
 
 class Autenticador:
@@ -61,7 +68,7 @@ class Autenticador:
             raise ErroApi(403, "Este token não tem permissão para este serviço")
         return corpo["sub"]
 
-    def sujeito(self, credencial: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)]) -> str:
+    def sujeito(self, credencial: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)]) -> str:
         """Dependência FastAPI: devolve o id de quem está logado ou barra a requisição."""
         if credencial is None:
             raise ErroApi(401, "Faça login para continuar")

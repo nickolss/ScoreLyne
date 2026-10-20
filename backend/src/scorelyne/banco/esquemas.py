@@ -35,10 +35,22 @@ class NovaSolicitacao(BaseModel):
     uf: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
 
 
+class LoginAnalista(BaseModel):
+    email: str = Field(min_length=5, max_length=120)
+    senha: str
+
+
+class SessaoAnalista(BaseModel):
+    token: str
+    tipo: str = "bearer"
+    nome: str
+
+
 class DecisaoAnalista(BaseModel):
+    """Veredito e justificativa. Quem decidiu vem do login, nunca do corpo da requisição."""
+
     veredito: Veredito
     justificativa: str = Field(min_length=10, max_length=2000)
-    analista: str = Field(default="Analista de crédito", min_length=2, max_length=120)
 
 
 class Evento(BaseModel):

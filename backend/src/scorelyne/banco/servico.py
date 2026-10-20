@@ -11,15 +11,17 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from scorelyne.comum.analise import analisar_com_tratamento
+from scorelyne.comum.auth import hash_senha, senha_confere
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.score import politica
 from scorelyne.score.analise import ResultadoAnalise
 
-from .db import EventoDB, SolicitacaoDB, agora
+from .db import AnalistaDB, EventoDB, SolicitacaoDB, agora
 from .esquemas import (
     DecisaoAnalista,
     Evento,
+    LoginAnalista,
     NovaSolicitacao,
     RevisaoHumana,
     Solicitacao,
@@ -164,13 +166,13 @@ def listar(sessao: Session, status: Status | None = None) -> list[SolicitacaoDB]
     return [s for s in todas if status is None or _status(s) is status]
 
 
-def decidir(sessao: Session, solicitacao_id: str, decisao: DecisaoAnalista) -> SolicitacaoDB:
+def decidir(sessao: Session, solicitacao_id: str, decisao: DecisaoAnalista, analista: str) -> SolicitacaoDB:
     s = obter(sessao, solicitacao_id)
     if s.revogado_em:
         raise ErroBanco(409, "Consentimento revogado: a solicitação não pode mais ser decidida")
     s.decisao_final = Status.APROVADO.value if decisao.veredito is Veredito.APROVAR else Status.RECUSADO.value
     s.justificativa = decisao.justificativa
-    s.analista = decisao.analista
+    s.analista = analista
     s.decidido_em = agora()
     sobrepoe = s.decisao_agente != politica.Decisao.REVISAO and s.decisao_final != s.decisao_agente
     titulo = (
@@ -180,7 +182,7 @@ def decidir(sessao: Session, solicitacao_id: str, decisao: DecisaoAnalista) -> S
     )
     if sobrepoe:
         titulo += " (sobrepondo o agente)"
-    _evento(s, "analista", "decisao_analista", titulo, f"{decisao.analista}: “{decisao.justificativa}”")
+    _evento(s, "analista", "decisao_analista", titulo, f"{analista}: “{decisao.justificativa}”")
     sessao.commit()
     return s
 
@@ -213,3 +215,25 @@ def revogar(sessao: Session, operadora: Operadora, solicitacao_id: str) -> Solic
     )
     sessao.commit()
     return s
+
+
+def criar_analista(sessao: Session, email: str, nome: str, senha: str) -> AnalistaDB:
+    a = AnalistaDB(id=str(uuid.uuid4()), email=email.lower(), nome=nome, senha_hash=hash_senha(senha))
+    sessao.add(a)
+    sessao.commit()
+    return a
+
+
+def autenticar_analista(sessao: Session, login: LoginAnalista) -> AnalistaDB:
+    a = sessao.scalar(select(AnalistaDB).where(AnalistaDB.email == login.email.lower()))
+    # Mesma resposta para e-mail desconhecido e senha errada.
+    if a is None or not senha_confere(login.senha, a.senha_hash):
+        raise ErroBanco(401, "E-mail ou senha incorretos")
+    return a
+
+
+def obter_analista(sessao: Session, analista_id: str) -> AnalistaDB:
+    a = sessao.get(AnalistaDB, analista_id)
+    if a is None:
+        raise ErroBanco(401, "Analista não encontrado")
+    return a

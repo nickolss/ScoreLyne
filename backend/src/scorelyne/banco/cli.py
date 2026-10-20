@@ -13,10 +13,14 @@ import os
 from datetime import timedelta
 
 import httpx
+from sqlalchemy import select
 
-from .db import SolicitacaoDB, agora, criar_sessoes
+from .db import AnalistaDB, SolicitacaoDB, agora, criar_sessoes
 from .esquemas import NovaSolicitacao
-from .servico import Operadora, criar
+from .servico import Operadora, criar, criar_analista
+
+# Credenciais só da demo: o analista semeado é um dado de teste, não uma pessoa real.
+ANALISTA_DEMO = ("analista@scorelyne.demo", "Analista de crédito", "scorelyne123")
 
 # Dados que o cliente declara no pedido. Telefone e CPF vêm de /demo/personas da operadora.
 PEDIDOS_DEMO = {
@@ -47,6 +51,8 @@ def semear(args: argparse.Namespace) -> None:
     personas = {p["chave"]: p for p in cliente.get("/demo/personas").raise_for_status().json()}
 
     with sessoes() as sessao:
+        if not sessao.scalar(select(AnalistaDB).where(AnalistaDB.email == ANALISTA_DEMO[0])):
+            criar_analista(sessao, *ANALISTA_DEMO)
         if args.limpar:
             for s in sessao.query(SolicitacaoDB).all():
                 sessao.delete(s)
@@ -90,6 +96,7 @@ def semear(args: argparse.Namespace) -> None:
                 e.em = momento
             sessao.commit()
             print(f"{p['titular']:<28} score {s.score:>4}  {s.decisao_agente}")
+    print(f"\nLogin do analista: {ANALISTA_DEMO[0]} / {ANALISTA_DEMO[2]}")
 
 
 def orchestrate(args: argparse.Namespace) -> None:
