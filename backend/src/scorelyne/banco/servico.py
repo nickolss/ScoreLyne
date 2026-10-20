@@ -7,14 +7,14 @@ from __future__ import annotations
 
 import uuid
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from scorelyne.operadora.models import DadosLinha
+from scorelyne.comum.analise import analisar_com_tratamento
+from scorelyne.comum.erros import ErroApi
+from scorelyne.comum.operadora import Operadora
 from scorelyne.score import politica
-from scorelyne.score.analise import EscoposObrigatoriosAusentes, ResultadoAnalise, analisar
-from scorelyne.score.fatores import HistoricoInsuficiente
+from scorelyne.score.analise import ResultadoAnalise
 
 from .db import EventoDB, SolicitacaoDB, agora
 from .esquemas import (
@@ -35,46 +35,8 @@ ROTULO_DECISAO = {
 }
 
 
-class ErroBanco(Exception):
-    def __init__(self, status: int, mensagem: str):
-        super().__init__(mensagem)
-        self.status = status
-        self.mensagem = mensagem
-
-
-class Operadora:
-    """Cliente HTTP da operadora mock."""
-
-    def __init__(self, cliente: httpx.Client):
-        self.cliente = cliente
-
-    def _chamar(self, metodo: str, caminho: str, **kwargs) -> dict:
-        try:
-            r = self.cliente.request(metodo, caminho, **kwargs)
-        except httpx.HTTPError as exc:
-            raise ErroBanco(503, "Operadora indisponível no momento") from exc
-        if r.status_code >= 400:
-            raise ErroBanco(r.status_code, f"Operadora: {r.json().get('detail', 'erro')}")
-        return r.json()
-
-    def dados(self, telefone: str, consentimento_id: str) -> DadosLinha:
-        resposta = self._chamar(
-            "GET", f"/linhas/{telefone}/dados", headers={"X-Consentimento-Id": consentimento_id}
-        )
-        return DadosLinha.model_validate(resposta)
-
-    def consentimento(self, consentimento_id: str) -> dict:
-        return self._chamar("GET", f"/consentimentos/{consentimento_id}")
-
-    def revogar(self, consentimento_id: str) -> dict:
-        return self._chamar("DELETE", f"/consentimentos/{consentimento_id}")
-
-
-def analisar_com_tratamento(dados: DadosLinha, valor: float | None) -> ResultadoAnalise:
-    try:
-        return analisar(dados, valor)
-    except (EscoposObrigatoriosAusentes, HistoricoInsuficiente) as exc:
-        raise ErroBanco(422, str(exc)) from exc
+ErroBanco = ErroApi
+__all__ = ["ErroBanco", "Operadora", "analisar_com_tratamento"]
 
 
 def _evento(s: SolicitacaoDB, ator: str, tipo: str, titulo: str, detalhe: str | None = None) -> None:
