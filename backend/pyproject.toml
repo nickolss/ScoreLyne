@@ -20,6 +20,7 @@ dependencies = [
 operadora = "scorelyne.operadora.cli:main"
 score = "scorelyne.score.cli:main"
 banco = "scorelyne.banco.cli:main"
+consumidor = "scorelyne.consumidor.cli:main"
 
 [dependency-groups]
 dev = [
