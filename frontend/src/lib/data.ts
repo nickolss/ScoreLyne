@@ -42,23 +42,6 @@ export const EXCLUDED_DATA = [
   "Apps instalados",
 ];
 
-// O que cada pessoa declara no pedido. Telefone, CPF e plano vêm da operadora (/demo/personas).
-export type PersonaPedido = {
-  chave: string;
-  occupation: string;
-  tenureMonths: number;
-  requested: number;
-  purpose: string;
-};
-
-export const PERSONA_PEDIDOS: PersonaPedido[] = [
-  { chave: "maria", occupation: "Cabeleireira autônoma", tenureMonths: 74, requested: 1500, purpose: "Equipamentos (secador e prancha)" },
-  { chave: "joao", occupation: "Motorista de aplicativo", tenureMonths: 38, requested: 3000, purpose: "Reparo do veículo" },
-  { chave: "ana", occupation: "Vendedora ambulante", tenureMonths: 14, requested: 800, purpose: "Capital de giro" },
-  { chave: "carlos", occupation: "Pedreiro", tenureMonths: 112, requested: 5000, purpose: "Ferramentas" },
-  { chave: "luciana", occupation: "Manicure", tenureMonths: 5, requested: 1000, purpose: "Materiais de trabalho" },
-];
-
 export const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
@@ -70,15 +53,6 @@ export const pct = (v: number, digits = 0) =>
 export function fmtPts(v: number, signed = true) {
   const r = Math.round(v * 10) / 10 || 0; // evita "-0,0"
   return (signed && r > 0 ? "+" : "") + r.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-export function tenureLabel(months: number) {
-  const y = Math.floor(months / 12);
-  const m = months % 12;
-  const parts = [];
-  if (y) parts.push(`${y} ${y === 1 ? "ano" : "anos"}`);
-  if (m) parts.push(`${m} ${m === 1 ? "mês" : "meses"}`);
-  return parts.join(" e ") || "menos de 1 mês";
 }
 
 export const maskPhone = (t: string) => `(${t.slice(0, 2)}) ${t.slice(2, 3)}••••-${t.slice(-4)}`;

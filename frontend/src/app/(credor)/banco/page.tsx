@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { BackendDown } from "@/components/backend-down";
 import { Copilot } from "@/components/copilot";
-import { ApiError, banco, type SolicitacaoResumo } from "@/lib/api";
+import { ApiError, type SolicitacaoResumo } from "@/lib/api";
+import { credorLogado } from "@/lib/api-servidor";
 import { THRESHOLDS, brl } from "@/lib/data";
 import { ApplicantTable } from "./applicant-table";
 
@@ -12,10 +14,14 @@ export const metadata: Metadata = { title: "Painel do banco" };
 export const dynamic = "force-dynamic";
 
 export default async function BancoPage() {
+  const credor = await credorLogado();
+  if (!credor) redirect("/banco/entrar");
+
   let rows: SolicitacaoResumo[];
   try {
-    rows = await banco.listar();
+    rows = await credor.listar();
   } catch (e) {
+    if (e instanceof ApiError && e.status === 401) redirect("/banco/entrar");
     return <BackendDown message={e instanceof ApiError ? e.message : "Erro ao carregar as solicitações."} />;
   }
 
@@ -62,8 +68,9 @@ export default async function BancoPage() {
           <div className="border border-dashed border-ink p-8 text-center">
             <p className="font-semibold">Nenhuma solicitação ainda.</p>
             <p className="mt-2 text-sm text-ink-2">
-              Faça uma simulação em <Link href="/cliente" className="underline">Para você</Link> ou rode{" "}
-              <code className="num bg-tint px-1">uv run banco semear</code> para criar as personas da demo.
+              Os pedidos chegam quando um consumidor decide enviá-los pela{" "}
+              <Link href="/cliente" className="underline">área do consumidor</Link>. Para a demonstração, rode{" "}
+              <code className="num bg-tint px-1">uv run banco semear</code> e crie as solicitações das personas.
             </p>
           </div>
         )}
