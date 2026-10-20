@@ -2,6 +2,7 @@
 
 consumidor servir    # sobe a API em http://localhost:8003 (precisa do Postgres do docker compose)
 consumidor semear    # cadastra as 5 personas da demo como consumidores (precisa da operadora no ar)
+consumidor orchestrate   # gera o agente do consumidor (YAML) para o watsonx Orchestrate
 """
 
 from __future__ import annotations
@@ -75,6 +76,16 @@ def semear(args: argparse.Namespace) -> None:
     print(f"\nSenha da demo para todos: {SENHA_DEMO}")
 
 
+def orchestrate(args: argparse.Namespace) -> None:
+    from .orchestrate import gerar_agente
+
+    caminho = os.path.join(args.saida, "agents", "consultor_scorelyne.yaml")
+    os.makedirs(os.path.dirname(caminho), exist_ok=True)
+    with open(caminho, "w", encoding="utf-8") as f:
+        f.write(gerar_agente(args.llm))
+    print(f"{caminho}: llm {args.llm}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(prog="consumidor", description="API do consumidor do ScoreLyne")
     sub = parser.add_subparsers(required=True)
@@ -88,6 +99,15 @@ def main() -> None:
     p_semear = sub.add_parser("semear", help="Cadastra as personas da demo como consumidores")
     p_semear.add_argument("--limpar", action="store_true", help="Apaga os cadastros existentes antes")
     p_semear.set_defaults(func=semear)
+
+    p_orq = sub.add_parser("orchestrate", help="Gera o agente do consumidor para o watsonx Orchestrate")
+    p_orq.add_argument(
+        "--llm",
+        default=os.getenv("ORCHESTRATE_LLM", "watsonx-orchestrate/frontier"),
+        help="Modelo do agente (confira com `orchestrate models list`)",
+    )
+    p_orq.add_argument("--saida", default="../orchestrate", help="Pasta com agents/")
+    p_orq.set_defaults(func=orchestrate)
 
     args = parser.parse_args()
     args.func(args)

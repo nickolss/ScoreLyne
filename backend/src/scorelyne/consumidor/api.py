@@ -18,7 +18,7 @@ from scorelyne.operadora.models import Consentimento
 from scorelyne.score.formulas import RegistroFormulas, carregar_formulas
 from scorelyne.score.modelo import carregar_modelo
 
-from . import servico
+from . import agente, assistente, servico
 from .db import ClienteDB, criar_sessoes
 from .esquemas import (
     AtualizarDados,
@@ -45,6 +45,7 @@ def create_app(
     operadora_url: str | None = None,
     transporte: httpx.BaseTransport | None = None,
     segredo: str | None = None,
+    ia: assistente.Assistente | None = None,
 ) -> FastAPI:
     operadora = Operadora(
         httpx.Client(
@@ -54,6 +55,7 @@ def create_app(
         )
     )
     auth = Autenticador("consumidor", segredo or os.getenv("CONSUMIDOR_JWT_SECRET"))
+    ia = ia or assistente.do_ambiente()
 
     app = FastAPI(
         title="Consumidor — ScoreLyne",
@@ -126,5 +128,23 @@ def create_app(
     def revogar(c: Logado, s: Db):
         """Revoga o consentimento: a operadora bloqueia o acesso e o score guardado é apagado."""
         return servico.publico(servico.revogar(s, operadora, c))
+
+    # --- Assistente com IA (watsonx.ai ou watsonx Orchestrate) -------------------------
+
+    @app.get("/assistente", tags=["assistente"])
+    def assistente_status(_: Logado):
+        perguntas = [p for _, _, p in agente.PERGUNTAS_INICIAIS]
+        if ia is None:
+            return {"disponivel": False, "provedor": None, "modelo": None, "perguntas": perguntas}
+        return {"disponivel": True, "provedor": ia.nome, "modelo": ia.modelo, "perguntas": perguntas}
+
+    @app.post("/assistente", response_model=assistente.RespostaAssistente, tags=["assistente"])
+    def conversar(pedido: assistente.PedidoAssistente, c: Logado):
+        """Explica o score de quem está logado. O assistente só enxerga os dados dessa pessoa."""
+        if ia is None:
+            raise ErroApi(
+                503, "Assistente desligado: configure WATSONX_APIKEY e ORCHESTRATE_* ou WATSONX_PROJECT_ID."
+            )
+        return ia.responder(pedido, c, operadora)
 
     return app
