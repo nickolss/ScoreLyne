@@ -6,6 +6,7 @@ entrega ao banco (`montar_dados`), com todos os escopos autorizados.
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from datetime import UTC, datetime
 
@@ -29,6 +30,11 @@ REGIOES = {
     "Sudeste": {"SP", "RJ", "MG", "ES"},
     "Sul": {"RS", "PR", "SC"},
 }
+
+
+# Um grupo está calibrado se a PD prevista cai dentro do intervalo de 95% da inadimplência observada
+# (±1,96 erro-padrão). Grupos pequenos têm ruído amostral maior, então a margem acompanha o tamanho.
+Z_95 = 1.96
 
 
 def regiao(uf: str) -> str:
@@ -154,8 +160,13 @@ def avaliar_equidade(modelo: Modelo, linhas, fatores_por_linha, y: np.ndarray) -
 
     Região e plano não entram no modelo; o teste verifica se vazam pelos fatores. A
     inadimplência entre aprovados por grupo mostra se o mesmo padrão de risco vale para todos.
+
+    Quando a razão de impacto falha mas o modelo está calibrado em todos os grupos, a diferença
+    de aprovação reflete diferença de risco ou de informação (ex.: só o pré-pago tem o fator de
+    recargas), e não um erro do modelo contra um grupo. Os dois sinais saem juntos de propósito.
     """
     decisoes = _decisoes(modelo, fatores_por_linha)
+    pds = np.array([pontuar(f, modelo).probabilidade_inadimplencia for f in fatores_por_linha])
     resultado = {}
     for nome, chave in (("regiao", lambda l: regiao(l.uf)), ("plano", lambda l: l.plano.value)):
         grupos: dict[str, list[int]] = defaultdict(list)
@@ -168,14 +179,24 @@ def avaliar_equidade(modelo: Modelo, linhas, fatores_por_linha, y: np.ndarray) -
                 "n": len(idx),
                 "taxa_aprovacao": round(len(aprovados) / len(idx), 4),
                 "inadimplencia_real": round(float(y[idx].mean()), 4),
+                # Calibração: a probabilidade prevista deve acompanhar a inadimplência real do grupo.
+                "pd_prevista": round(float(pds[idx].mean()), 4),
                 # Mesmo padrão de risco para todos: inadimplência parecida entre os aprovados.
                 "inadimplencia_aprovados": round(float(y[aprovados].mean()), 4) if aprovados else None,
             }
         aprov = [t["taxa_aprovacao"] for t in taxas.values() if t["n"] >= 30]
         razao = round(min(aprov) / max(aprov), 4) if aprov and max(aprov) > 0 else None
+        for t in taxas.values():
+            p = t["inadimplencia_real"]
+            t["margem_95"] = round(Z_95 * math.sqrt(p * (1 - p) / t["n"]), 4)
+            t["calibrado"] = abs(t["pd_prevista"] - p) <= t["margem_95"]
+        grandes = [t for t in taxas.values() if t["n"] >= 30]
+        erros = [abs(t["pd_prevista"] - t["inadimplencia_real"]) for t in grandes]
         resultado[nome] = {
             "grupos": taxas,
             "razao_impacto": razao,
             "passa_regra_4_5": bool(razao and razao >= 0.8),
+            "erro_calibracao_maximo": round(max(erros), 4) if erros else None,
+            "calibrado_em_todos_os_grupos": bool(grandes and all(t["calibrado"] for t in grandes)),
         }
     return resultado

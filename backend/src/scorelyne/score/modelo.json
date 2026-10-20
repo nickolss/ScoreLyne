@@ -1,13 +1,13 @@
 {
-  "versao": "20261010-s42",
-  "treinado_em": "2026-10-10T23:52:49.353713Z",
-  "intercepto": 5.6643782925142325,
+  "versao": "20261020-s42",
+  "treinado_em": "2026-10-20T19:06:31.751832Z",
+  "intercepto": 5.664378292513761,
   "coeficientes": {
-    "recargas": -1.4728706936037026,
-    "permanencia": -0.881898004753925,
-    "pontualidade": -5.79864657160683,
+    "recargas": -1.472870693603034,
+    "permanencia": -0.8818980047538306,
+    "pontualidade": -5.798646571606832,
     "estabilidade": 0.0,
-    "consistencia": -0.9779837175059585
+    "consistencia": -0.977983717506163
   },
   "medias": {
     "recargas": 83.608,
@@ -55,35 +55,52 @@
           "n": 302,
           "taxa_aprovacao": 0.4007,
           "inadimplencia_real": 0.1391,
-          "inadimplencia_aprovados": 0.0413
+          "pd_prevista": 0.1647,
+          "inadimplencia_aprovados": 0.0413,
+          "margem_95": 0.039,
+          "calibrado": true
         },
         "Nordeste": {
           "n": 1211,
           "taxa_aprovacao": 0.3939,
           "inadimplencia_real": 0.1652,
-          "inadimplencia_aprovados": 0.0503
+          "pd_prevista": 0.1606,
+          "inadimplencia_aprovados": 0.0503,
+          "margem_95": 0.0209,
+          "calibrado": true
         },
         "Norte": {
           "n": 308,
           "taxa_aprovacao": 0.3734,
           "inadimplencia_real": 0.1494,
-          "inadimplencia_aprovados": 0.0609
+          "pd_prevista": 0.1698,
+          "inadimplencia_aprovados": 0.0609,
+          "margem_95": 0.0398,
+          "calibrado": true
         },
         "Sudeste": {
           "n": 878,
           "taxa_aprovacao": 0.3986,
           "inadimplencia_real": 0.1731,
-          "inadimplencia_aprovados": 0.0886
+          "pd_prevista": 0.1653,
+          "inadimplencia_aprovados": 0.0886,
+          "margem_95": 0.025,
+          "calibrado": true
         },
         "Sul": {
           "n": 301,
           "taxa_aprovacao": 0.4219,
           "inadimplencia_real": 0.186,
-          "inadimplencia_aprovados": 0.0472
+          "pd_prevista": 0.1711,
+          "inadimplencia_aprovados": 0.0472,
+          "margem_95": 0.044,
+          "calibrado": true
         }
       },
       "razao_impacto": 0.885,
-      "passa_regra_4_5": true
+      "passa_regra_4_5": true,
+      "erro_calibracao_maximo": 0.0256,
+      "calibrado_em_todos_os_grupos": true
     },
     "plano": {
       "grupos": {
@@ -91,23 +108,34 @@
           "n": 801,
           "taxa_aprovacao": 0.4794,
           "inadimplencia_real": 0.1586,
-          "inadimplencia_aprovados": 0.0599
+          "pd_prevista": 0.148,
+          "inadimplencia_aprovados": 0.0599,
+          "margem_95": 0.0253,
+          "calibrado": true
         },
         "pos_pago": {
           "n": 589,
           "taxa_aprovacao": 0.5212,
           "inadimplencia_real": 0.1579,
-          "inadimplencia_aprovados": 0.0651
+          "pd_prevista": 0.1462,
+          "inadimplencia_aprovados": 0.0651,
+          "margem_95": 0.0294,
+          "calibrado": true
         },
         "pre_pago": {
           "n": 1610,
           "taxa_aprovacao": 0.3099,
           "inadimplencia_real": 0.1714,
-          "inadimplencia_aprovados": 0.0601
+          "pd_prevista": 0.1792,
+          "inadimplencia_aprovados": 0.0601,
+          "margem_95": 0.0184,
+          "calibrado": true
         }
       },
       "razao_impacto": 0.5946,
-      "passa_regra_4_5": false
+      "passa_regra_4_5": false,
+      "erro_calibracao_maximo": 0.0117,
+      "calibrado_em_todos_os_grupos": true
     }
   }
 }

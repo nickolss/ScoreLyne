@@ -112,8 +112,13 @@ def carregar_modelo(caminho: Path = ARQUIVO_MODELO) -> Modelo:
     return Modelo.model_validate_json(caminho.read_text(encoding="utf-8"))
 
 
-def salvar_modelo(modelo: Modelo, caminho: Path = ARQUIVO_MODELO) -> None:
-    caminho.write_text(json.dumps(modelo.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n")
+def salvar_modelo(modelo: Modelo, caminho: Path = ARQUIVO_MODELO, pasta_versoes: Path | None = None) -> None:
+    """Grava o modelo vigente e guarda uma cópia em versoes/ para o histórico."""
+    texto = json.dumps(modelo.model_dump(mode="json"), indent=2, ensure_ascii=False) + "\n"
+    caminho.write_text(texto, encoding="utf-8")
+    pasta = pasta_versoes if pasta_versoes is not None else caminho.with_name("versoes")
+    pasta.mkdir(exist_ok=True)
+    (pasta / f"{modelo.versao}.json").write_text(texto, encoding="utf-8")
     carregar_modelo.cache_clear()
 
 
