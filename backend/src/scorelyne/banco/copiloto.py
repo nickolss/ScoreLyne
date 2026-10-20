@@ -28,6 +28,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from scorelyne.comum import ibm
+from scorelyne.comum.cartao import cartao_modelo
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.ibm import (  # noqa: F401  (reexportados: a API e os testes importam daqui)
     ChamadaFerramenta,
@@ -123,8 +124,6 @@ FERRAMENTAS_CHAT = ibm.ferramentas_para_chat(agente.FERRAMENTAS)
 
 def executar(nome: str, args: dict[str, Any], sessao: Session, operadora: Operadora) -> Any:
     """Roda uma ferramenta do agente diretamente sobre o serviço do credor."""
-    from .api import cartao_modelo
-
     if nome == "listar_solicitacoes":
         status = Status(args["status"]) if args.get("status") else None
         return [servico.resumo(s).model_dump(mode="json") for s in servico.listar(sessao, status)]

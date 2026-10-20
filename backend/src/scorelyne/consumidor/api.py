@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from scorelyne.comum.auth import Autenticador
+from scorelyne.comum.cartao import CartaoModelo, cartao_modelo
 from scorelyne.comum.contratos import SituacaoSolicitacao
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
@@ -95,6 +96,11 @@ def create_app(
     @app.get("/saude", tags=["infra"])
     def saude():
         return {"status": "ok", "modelo": carregar_modelo().versao}
+
+    @app.get("/modelo", response_model=CartaoModelo, tags=["transparencia"])
+    def modelo():
+        """Cartão do modelo: peso de cada fator, limiares, métricas e equidade. Aberto a qualquer pessoa."""
+        return cartao_modelo()
 
     @app.get("/formulas", response_model=RegistroFormulas, tags=["transparencia"])
     def formulas():

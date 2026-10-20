@@ -84,3 +84,6 @@ def test_endpoint_publico_de_formulas_do_consumidor():
     assert r.status_code == 200
     assert r.json()["versao"] == F.versao
     assert len(r.json()["fatores"]) == 5
+    modelo = TestClient(app).get("/modelo")  # o consumidor vê o cartão do modelo sem passar pelo credor
+    assert modelo.status_code == 200
+    assert {f["chave"] for f in modelo.json()["fatores"]} == {f.id.value for f in F.fatores}

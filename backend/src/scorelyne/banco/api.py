@@ -20,14 +20,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from scorelyne.comum.auth import Autenticador, bearer, chave_valida
+from scorelyne.comum.cartao import CartaoModelo, cartao_modelo
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
-from scorelyne.operadora.models import DadosLinha, Escopo
-from scorelyne.score import politica
+from scorelyne.operadora.models import DadosLinha
 from scorelyne.score.analise import ResultadoAnalise
-from scorelyne.score.fatores import ROTULOS
 from scorelyne.score.formulas import RegistroFormulas, carregar_formulas
-from scorelyne.score.modelo import Escala, carregar_modelo
+from scorelyne.score.modelo import carregar_modelo
 
 from . import agente, copiloto, servico
 from .db import AnalistaDB, criar_sessoes
@@ -52,50 +51,6 @@ class PedidoAnalise(BaseModel):
 class PedidoAnaliseDados(BaseModel):
     dados: DadosLinha
     valor_solicitado: Annotated[float | None, Field(gt=0)] = None
-
-
-class FatorModelo(BaseModel):
-    chave: Escopo
-    rotulo: str
-    importancia: float
-    obrigatorio: bool
-    ativo: bool
-    perda_maxima_se_omitir: int  # pontos que o score pode cair se o titular não autorizar
-
-
-class CartaoModelo(BaseModel):
-    """Resumo público do modelo, para a página de governança e para auditoria."""
-
-    versao: str
-    fatores: list[FatorModelo]
-    limiares: dict[str, int]
-    escala: Escala
-    metricas: dict[str, float]
-    equidade: dict
-
-
-def cartao_modelo() -> CartaoModelo:
-    m = carregar_modelo()
-    return CartaoModelo(
-        versao=m.versao,
-        fatores=[
-            FatorModelo(
-                chave=k,
-                rotulo=ROTULOS[k],
-                importancia=m.importancia[k],
-                obrigatorio=k in politica.ESCOPOS_OBRIGATORIOS,
-                ativo=m.coeficientes[k] != 0,
-                perda_maxima_se_omitir=round(
-                    m.escala.fator * abs(m.coeficientes[k]) * (100 - m.conservador[k]) / 100
-                ),
-            )
-            for k in ROTULOS
-        ],
-        limiares={"aprovacao": politica.LIMIAR_APROVACAO, "revisao": politica.LIMIAR_REVISAO},
-        escala=m.escala,
-        metricas=m.metricas,
-        equidade=m.equidade,
-    )
 
 
 def _sessao(request: Request) -> Iterator[Session]:
