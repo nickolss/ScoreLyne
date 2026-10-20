@@ -18,6 +18,24 @@ const PARTIES = [
   },
 ];
 
+// As duas personas do produto. O consumidor vem primeiro: a demonstração começa pela busca de crédito.
+const PERSONAS = [
+  {
+    href: "/cliente",
+    quem: "Sou consumidor",
+    texto: "Quero entender meu score e buscar crédito.",
+    acao: "Simular meu score",
+    destaque: true,
+  },
+  {
+    href: "/banco",
+    quem: "Sou operador de crédito",
+    texto: "Quero validar análises e decidir pedidos.",
+    acao: "Entrar no painel",
+    destaque: false,
+  },
+] as const;
+
 const ALTERNATIVES = [
   ["Score de birôs", "Escala e padronização", "Sem histórico bancário, sem score"],
   ["Cadastro Positivo", "Premia quem paga em dia", "Só registra quem já tem crédito formal"],
@@ -42,16 +60,27 @@ export default function Home() {
               O ScoreLyne lê o relacionamento com a operadora de telefonia e o transforma num score de
               crédito itemizado, para quem os birôs não enxergam: autônomos, informais e desbancados.
             </p>
-            <div className="mt-10 flex flex-wrap items-center gap-x-8 gap-y-4">
-              <Link
-                href="/cliente"
-                className="inline-flex items-center gap-3 bg-paper text-ink px-5 py-3.5 font-semibold hover:bg-lime transition-colors"
-              >
-                Simular meu score <Arrow />
-              </Link>
-              <Link href="/banco" className="inline-flex items-center gap-3 font-semibold underline hover:no-underline">
-                Ver o painel do banco
-              </Link>
+            <div className="mt-10 max-w-[38rem]">
+              <p className="label text-on-cobalt-2">Escolha como quer entrar</p>
+              <div className="mt-3 grid sm:grid-cols-2 border border-on-cobalt/60">
+                {PERSONAS.map((p) => (
+                  <Link
+                    key={p.href}
+                    href={p.href}
+                    className={`group flex flex-col justify-between gap-6 p-5 transition-colors sm:first:border-r border-on-cobalt/60 max-sm:first:border-b ${
+                      p.destaque ? "bg-paper text-ink hover:bg-lime" : "hover:bg-cobalt-deep"
+                    }`}
+                  >
+                    <span>
+                      <span className="block text-xl font-bold">{p.quem}</span>
+                      <span className={`mt-1 block text-sm ${p.destaque ? "text-ink-2" : "text-on-cobalt-2"}`}>{p.texto}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-3 font-semibold">
+                      {p.acao} <Arrow />
+                    </span>
+                  </Link>
+                ))}
+              </div>
             </div>
             <dl className="mt-14 grid grid-cols-3 border-t border-on-cobalt/40 max-w-[34rem]">
               {[
@@ -196,7 +225,10 @@ export default function Home() {
               href="/cliente"
               className="inline-flex items-center gap-3 bg-paper text-ink px-5 py-3.5 font-semibold hover:bg-lime transition-colors"
             >
-              Simular meu score <Arrow />
+              Sou consumidor: simular meu score <Arrow />
+            </Link>
+            <Link href="/banco" className="font-semibold underline hover:no-underline">
+              Sou operador de crédito
             </Link>
             <Link href="/governanca" className="font-semibold underline hover:no-underline">
               Como protegemos seus dados
