@@ -53,6 +53,7 @@ class Cliente(BaseModel):
     uf: str | None
     consentimento_ativo: bool
     escopos: list[Escopo]
+    enviado_ao_credor: bool
 
 
 class Sessao(BaseModel):

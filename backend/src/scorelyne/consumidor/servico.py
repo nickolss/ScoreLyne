@@ -14,6 +14,7 @@ from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.score.analise import ResultadoAnalise
 
+from .credor import Credor
 from .db import ClienteDB, agora
 from .esquemas import (
     AtualizarDados,
@@ -27,6 +28,8 @@ from .esquemas import (
 
 SOLICITANTE = "ScoreLyne"
 FINALIDADE_CONSENTIMENTO = "autoconsulta_de_score"
+CREDOR_NOME = "Banco Parceiro S.A."
+FINALIDADE_CREDOR = "analise_de_credito"
 
 
 def publico(c: ClienteDB) -> Cliente:
@@ -40,6 +43,7 @@ def publico(c: ClienteDB) -> Cliente:
         uf=c.uf,
         consentimento_ativo=c.consentimento_id is not None,
         escopos=c.escopos or [],
+        enviado_ao_credor=c.solicitacao_id is not None,
     )
 
 
@@ -86,11 +90,15 @@ def _limpar_consentimento(c: ClienteDB) -> None:
     c.calculado_em = None
 
 
-def atualizar(sessao: Session, operadora: Operadora, c: ClienteDB, dados: AtualizarDados) -> ClienteDB:
+def atualizar(
+    sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB, dados: AtualizarDados
+) -> ClienteDB:
     mudancas = dados.model_dump(exclude_none=True)
-    if mudancas.get("telefone", c.telefone) != c.telefone and c.consentimento_id:
-        # O consentimento vale para a linha antiga: revoga e apaga a análise.
-        operadora.revogar(c.consentimento_id)
+    if mudancas.get("telefone", c.telefone) != c.telefone:
+        # Os consentimentos valem para a linha antiga: revoga tudo e apaga as análises.
+        _retirar_do_credor(credor, c)
+        if c.consentimento_id:
+            operadora.revogar(c.consentimento_id)
         _limpar_consentimento(c)
     for campo, valor in mudancas.items():
         setattr(c, campo, valor)
@@ -147,10 +155,72 @@ def meu_score(c: ClienteDB) -> MeuScore:
     )
 
 
-def revogar(sessao: Session, operadora: Operadora, c: ClienteDB) -> ClienteDB:
-    """Revoga na operadora e apaga o score guardado. O cadastro continua."""
+def _retirar_do_credor(credor: Credor, c: ClienteDB) -> None:
+    """O credor revoga o consentimento dele na operadora e apaga a análise. Falhou? Nada muda aqui."""
+    if c.solicitacao_id:
+        credor.revogar(c.solicitacao_id)
+        c.solicitacao_id = None
+        c.consentimento_credor_id = None
+
+
+def revogar(sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB) -> ClienteDB:
+    """Revoga tudo: o envio ao credor, o consentimento na operadora e o score guardado."""
+    _retirar_do_credor(credor, c)
     if c.consentimento_id:
         operadora.revogar(c.consentimento_id)
         _limpar_consentimento(c)
-        sessao.commit()
+    sessao.commit()
     return c
+
+
+def enviar_ao_credor(sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB) -> ClienteDB:
+    """Pede crédito ao credor. A pessoa dá ao credor um consentimento só dele, com os mesmos escopos."""
+    if not c.analise:
+        raise ErroApi(409, "Calcule o seu score antes de enviar o pedido ao credor")
+    if c.solicitacao_id:
+        raise ErroApi(409, "Seu pedido já foi enviado: retire-o antes de enviar de novo")
+
+    consentimento = operadora.criar_consentimento(
+        {
+            "telefone": c.telefone,
+            "cpf": c.cpf,
+            "escopos": c.escopos,
+            "finalidade": FINALIDADE_CREDOR,
+            "solicitante": CREDOR_NOME,
+        }
+    )
+    try:
+        solicitacao = credor.criar(
+            {
+                "nome": c.nome,
+                "telefone": c.telefone,
+                "consentimento_id": consentimento["id"],
+                "valor_solicitado": c.valor_solicitado,
+                "finalidade": c.finalidade,
+                "ocupacao": c.ocupacao,
+                "cidade": c.cidade,
+                "uf": c.uf,
+            }
+        )
+    except ErroApi:
+        operadora.revogar(consentimento["id"])  # não deixa consentimento solto se o envio falhou
+        raise
+    c.solicitacao_id = solicitacao["id"]
+    c.consentimento_credor_id = consentimento["id"]
+    sessao.commit()
+    return c
+
+
+def retirar_do_credor(sessao: Session, credor: Credor, c: ClienteDB) -> ClienteDB:
+    """Desfaz só o envio ao credor. O consentimento e o score do próprio consumidor continuam."""
+    if not c.solicitacao_id:
+        raise ErroApi(409, "Você não tem nenhum pedido enviado")
+    _retirar_do_credor(credor, c)
+    sessao.commit()
+    return c
+
+
+def minha_solicitacao(credor: Credor, c: ClienteDB) -> dict:
+    if not c.solicitacao_id:
+        raise ErroApi(404, "Você ainda não enviou nenhum pedido ao credor")
+    return credor.situacao(c.solicitacao_id)

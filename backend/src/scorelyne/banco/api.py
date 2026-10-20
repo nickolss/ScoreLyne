@@ -36,6 +36,7 @@ from .esquemas import (
     LoginAnalista,
     NovaSolicitacao,
     SessaoAnalista,
+    SituacaoSolicitacao,
     Solicitacao,
     SolicitacaoResumo,
     Status,
@@ -202,6 +203,16 @@ def create_app(
     )
     def obter_solicitacao(solicitacao_id: str, s: Sessao):
         return servico.completa(servico.obter(s, solicitacao_id))
+
+    @app.get(
+        "/solicitacoes/{solicitacao_id}/situacao",
+        response_model=SituacaoSolicitacao,
+        tags=["solicitacoes"],
+        dependencies=[Interno],
+    )
+    def situacao(solicitacao_id: str, s: Sessao):
+        """Visão da solicitação para o próprio consumidor, pedida pelo módulo do consumidor."""
+        return servico.situacao(servico.obter(s, solicitacao_id))
 
     @app.post("/solicitacoes/{solicitacao_id}/decisao", response_model=Solicitacao, tags=["revisao humana"])
     def decidir(solicitacao_id: str, decisao: DecisaoAnalista, a: Analista, s: Sessao):

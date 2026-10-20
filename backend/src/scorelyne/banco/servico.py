@@ -24,6 +24,7 @@ from .esquemas import (
     LoginAnalista,
     NovaSolicitacao,
     RevisaoHumana,
+    SituacaoSolicitacao,
     Solicitacao,
     SolicitacaoResumo,
     Status,
@@ -91,6 +92,20 @@ def completa(s: SolicitacaoDB) -> Solicitacao:
         eventos=[
             Evento(em=e.em, ator=e.ator, tipo=e.tipo, titulo=e.titulo, detalhe=e.detalhe) for e in s.eventos
         ],
+    )
+
+
+def situacao(s: SolicitacaoDB) -> SituacaoSolicitacao:
+    c = completa(s)
+    return SituacaoSolicitacao(
+        id=c.id,
+        status=c.status,
+        decisao_agente=c.decisao_agente,
+        score=c.score,
+        oferta=c.analise.oferta if c.analise else None,
+        motivos_revisao=c.analise.motivos_revisao if c.analise else [],
+        revisao_humana=c.revisao_humana,
+        atualizado_em=c.atualizado_em,
     )
 
 

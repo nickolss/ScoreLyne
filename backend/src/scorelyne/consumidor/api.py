@@ -12,6 +12,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from scorelyne.comum.auth import Autenticador
+from scorelyne.comum.contratos import SituacaoSolicitacao
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.operadora.models import Consentimento
@@ -19,6 +20,7 @@ from scorelyne.score.formulas import RegistroFormulas, carregar_formulas
 from scorelyne.score.modelo import carregar_modelo
 
 from . import agente, assistente, servico
+from .credor import Credor
 from .db import ClienteDB, criar_sessoes
 from .esquemas import (
     AtualizarDados,
@@ -46,12 +48,23 @@ def create_app(
     transporte: httpx.BaseTransport | None = None,
     segredo: str | None = None,
     ia: assistente.Assistente | None = None,
+    credor_url: str | None = None,
+    transporte_credor: httpx.BaseTransport | None = None,
+    chave_servico: str | None = None,
 ) -> FastAPI:
     operadora = Operadora(
         httpx.Client(
             base_url=operadora_url or os.getenv("OPERADORA_URL", "http://localhost:8001"),
             timeout=10,
             transport=transporte,
+        )
+    )
+    credor = Credor(
+        httpx.Client(
+            base_url=credor_url or os.getenv("CREDOR_URL", "http://localhost:8002"),
+            headers={"X-Service-Key": chave_servico or os.getenv("CREDOR_SERVICE_KEY", "")},
+            timeout=10,
+            transport=transporte_credor,
         )
     )
     auth = Autenticador("consumidor", segredo or os.getenv("CONSUMIDOR_JWT_SECRET"))
@@ -106,7 +119,7 @@ def create_app(
     @app.patch("/meus-dados", response_model=Cliente, tags=["conta"])
     def meus_dados(dados: AtualizarDados, c: Logado, s: Db):
         """Corrige ocupação, cidade, UF ou telefone. Trocar o telefone revoga o consentimento."""
-        return servico.publico(servico.atualizar(s, operadora, c, dados))
+        return servico.publico(servico.atualizar(s, operadora, credor, c, dados))
 
     # --- Consentimento e score ------------------------------------------------------
 
@@ -127,7 +140,24 @@ def create_app(
     @app.post("/revogar", response_model=Cliente, tags=["score"])
     def revogar(c: Logado, s: Db):
         """Revoga o consentimento: a operadora bloqueia o acesso e o score guardado é apagado."""
-        return servico.publico(servico.revogar(s, operadora, c))
+        return servico.publico(servico.revogar(s, operadora, credor, c))
+
+    # --- Pedido ao credor ----------------------------------------------------------------
+
+    @app.post("/enviar-ao-credor", response_model=Cliente, tags=["credor"])
+    def enviar_ao_credor(c: Logado, s: Db):
+        """Envia o pedido de crédito ao credor, dando a ele um consentimento só dele."""
+        return servico.publico(servico.enviar_ao_credor(s, operadora, credor, c))
+
+    @app.get("/minha-solicitacao", response_model=SituacaoSolicitacao, tags=["credor"])
+    def minha_solicitacao(c: Logado):
+        """Situação do pedido: decisão, justificativa do analista e oferta."""
+        return servico.minha_solicitacao(credor, c)
+
+    @app.post("/retirar-do-credor", response_model=Cliente, tags=["credor"])
+    def retirar_do_credor(c: Logado, s: Db):
+        """Retira o pedido do credor (para corrigir dados e reenviar). O seu score continua aqui."""
+        return servico.publico(servico.retirar_do_credor(s, credor, c))
 
     # --- Assistente com IA (watsonx.ai ou watsonx Orchestrate) -------------------------
 

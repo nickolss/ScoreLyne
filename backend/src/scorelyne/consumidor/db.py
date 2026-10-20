@@ -37,6 +37,10 @@ class ClienteDB(Base):
     consentimento_id: Mapped[str | None] = mapped_column(String(36))
     escopos: Mapped[list[str] | None] = mapped_column(JSON)
 
+    # Solicitação enviada ao credor, com o consentimento específico dado a ele
+    solicitacao_id: Mapped[str | None] = mapped_column(String(36))
+    consentimento_credor_id: Mapped[str | None] = mapped_column(String(36))
+
     # Último score calculado; apagado quando o consentimento é revogado
     valor_solicitado: Mapped[float | None] = mapped_column(Float)
     finalidade: Mapped[str | None] = mapped_column(String(200))
