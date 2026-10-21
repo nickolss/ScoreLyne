@@ -18,11 +18,13 @@ A operadora (8001) é um mock com dados sintéticos. O motor de score é uma bib
 ## Roteiro da apresentação
 
 1. **Escolher a persona.** Na página inicial, "Sou consumidor" vem primeiro; "Sou operador de crédito" depois. O cabeçalho mostra a persona ativa.
-2. **Persona Consumidor: buscar crédito.** Entrar (ou criar conta) com uma pessoa de demonstração, conferir e corrigir os dados, autorizar o consentimento, informar valor e finalidade, ver o score.
-3. **IA para o consumidor.** Perguntar ao assistente "por que minha nota ficou assim?". Ele explica fator por fator, sugere como melhorar e simula outro valor. Mostrar as fórmulas em "Como é calculado".
-4. **Enviar o pedido ao banco.** O consumidor dá ao banco um consentimento só dele.
-5. **Persona Operador de crédito: validar e analisar.** Entrar como analista, abrir o pedido, ver a explicação do agente, perguntar ao copiloto e decidir com justificativa. Ênfase na parte agêntica: o agente calcula, explica e simula; a pessoa decide.
-6. **Volta ao consumidor.** A decisão e a justificativa aparecem na tela dele. Mostrar "Revogar": o pedido some do banco e a operadora bloqueia o acesso.
+2. **Persona Consumidor: entender antes de pedir.** A chegada explica o que a ScoreLyne lê, o que nunca lê e o controle que a pessoa tem, antes de pedir qualquer dado. Criar conta (ou entrar com uma pessoa de demonstração) leva ao painel: score, pedido e autorizações num só lugar.
+3. **Buscar crédito.** Conferir e corrigir os dados, autorizar item por item, informar valor e finalidade, ver o score.
+4. **IA para o consumidor.** Perguntar ao assistente "por que minha nota ficou assim?". Ele explica fator por fator, sugere como melhorar e simula outro valor. Mostrar as fórmulas em "Como é calculado".
+5. **Controle dos próprios dados.** Em "Consentimentos", ver quem leu os dados e quando (o histórico vem da operadora) e revogar item por item. Em "Pedidos", ver o histórico, inclusive os retirados. Em "Perfil", corrigir dados, trocar a senha e excluir a conta.
+6. **Enviar o pedido ao banco.** O consumidor dá ao banco um consentimento só dele.
+7. **Persona Operador de crédito: validar e analisar.** Entrar como analista, abrir o pedido, ver a explicação do agente, perguntar ao copiloto e decidir com justificativa. Ênfase na parte agêntica: o agente calcula, explica e simula; a pessoa decide.
+8. **Volta ao consumidor.** A decisão e a justificativa aparecem na tela dele. Mostrar "Revogar": o pedido some do banco e a operadora bloqueia o acesso.
 
 ## Registro das fórmulas
 
@@ -116,4 +118,8 @@ Este texto descreve o modelo que pretendemos adotar, não um contrato fechado. S
 - Os dados são sintéticos; o modelo (AUC 0,73) está perto do que os sinais disponíveis permitem: um boosting nos mesmos fatores deu 0,72 e três variáveis novas somaram no máximo 0,006.
 - A aprovação automática do pré-pago é menor (regra dos 4/5 falha), mas o modelo está calibrado em todos os planos. Decidir se a regra dos 4/5 prevalece sobre a calibração é uma decisão de produto em aberto.
 - O assistente de IA só funciona com credenciais da IBM no `backend/.env`; sem elas ele aparece como desligado.
+- A exclusão de conta revoga tudo na operadora na hora. Se o credor estiver fora do ar nesse momento, a análise que ele guardava só é apagada quando ele voltar, mas o acesso dele já está bloqueado.
+- O histórico de consentimentos mostra só os que estão ativos; consentimentos já revogados saem da lista (o que fica é o histórico de pedidos).
+- Não há limite de tentativas de login nem recuperação de senha: ficam fora do MVP.
+- Não há tela de resumo própria para o analista além dos indicadores e filtros da fila; ele ganhou perfil e troca de senha.
 - Não há deploy: a demo roda local (`docker compose` para o Postgres, ou SQLite). Não usar IBM Cloud para publicação.

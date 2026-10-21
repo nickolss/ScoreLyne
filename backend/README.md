@@ -66,12 +66,16 @@ POST   /login                           { cpf, senha } -> token (papel consumido
 GET    /me                              dados da própria pessoa
 PATCH  /meus-dados                      corrige telefone, ocupação, cidade, uf (trocar o telefone revoga tudo)
 POST   /consentimentos                  { escopos } autoriza a ScoreLyne a ler a operadora
+GET    /meus-consentimentos             consentimentos ativos com cada leitura dos dados registrada pela operadora
 POST   /meu-score                       { valor_solicitado, finalidade } calcula e guarda
 GET    /meu-score                       nota, fatores, pontos fortes e de atenção, plano de melhora
 POST   /enviar-ao-credor                dá ao credor um consentimento só dele e envia o pedido
 GET    /minha-solicitacao               situação: decisão, justificativa do analista, oferta
+GET    /meus-pedidos                    histórico dos pedidos ao credor (inclui os retirados e o motivo)
 POST   /retirar-do-credor               desfaz só o envio (o score continua)
 POST   /revogar                         revoga tudo e apaga o score guardado
+POST   /minha-conta/senha              { senha_atual, nova_senha }
+POST   /minha-conta/excluir            { senha } revoga tudo e apaga cadastro, score e histórico (LGPD)
 GET    /assistente · POST /assistente   chat com a IA sobre a própria nota (só enxerga os dados de quem está logado)
 GET    /formulas · GET /modelo          públicos: registro versionado das fórmulas e cartão do modelo
 ```
@@ -86,6 +90,7 @@ Tudo exige login de analista, a chave de agente (só leitura e simulação) ou a
 
 ```
 POST   /login                           { email, senha } -> token do analista
+GET    /eu · POST /minha-conta/senha    perfil do analista e troca de senha
 POST   /solicitacoes                    (chave de serviço) { nome, telefone, consentimento_id, valor_solicitado, finalidade, ... }
 GET    /solicitacoes[?status=revisao]   fila
 GET    /solicitacoes/{id}               análise completa + trilha de auditoria
