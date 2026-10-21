@@ -35,6 +35,36 @@ leem esse `.env`.
 Sem Docker, aponte os bancos para SQLite: `BANCO_DB_URL=sqlite:///credor.db` e
 `CONSUMIDOR_DB_URL=sqlite:///consumidor.db`.
 
+## Logins de demonstração
+
+Valem depois de rodar `uv run consumidor semear` e `uv run banco semear --limpar`. São dados de teste de pessoas
+fictícias, numa operadora simulada: não use essas senhas fora da demonstração.
+
+**Operador de crédito (analista)**, em http://localhost:3000/banco/entrar
+
+| E-mail | Senha |
+|---|---|
+| `analista@scorelyne.demo` | `scorelyne123` |
+
+**Consumidores**, em http://localhost:3000/cliente/entrar (o login é pelo CPF; a senha é a mesma para todos:
+`scorelyne123`). Na tela de login, clicar no nome da pessoa preenche CPF e senha.
+
+| Pessoa | CPF | Celular | Plano · tempo de linha | Score e decisão do agente |
+|---|---|---|---|---|
+| Maria Aparecida dos Santos | `424.026.771-47` | (11) 98712-4821 | pré-pago · 74 meses | 896 · pré-aprovada |
+| João Batista Ferreira | `520.201.915-71` | (81) 99653-7210 | controle · 38 meses | 862 · pré-aprovado |
+| Ana Clara Souza | `330.208.799-30` | (91) 98441-2093 | pré-pago · 14 meses | 473 · recusada, com plano de melhora |
+| Carlos Henrique Lima | `290.517.007-76` | (31) 99182-7746 | pós-pago · 112 meses | 416 · recusado, com plano de melhora |
+| Luciana Ferreira | `630.526.194-62` | (71) 98830-5518 | pré-pago · 5 meses | 601 · vai para um analista (histórico curto) |
+
+Sugestão para a apresentação: Maria para o caminho feliz, Luciana para ver o analista decidir um caso em revisão e
+Ana ou Carlos para ver a explicação de uma recusa.
+
+As notas são as que o modelo atual calcula (`score/modelo.json`) e mudam se o modelo for retreinado. Quem cria uma
+conta nova com outro CPF ou celular consegue entrar, mas só consegue calcular o score se a linha existir na
+operadora simulada. Para trocar a senha de teste, use a tela de Perfil, ou mude as constantes `SENHA_DEMO` e
+`ANALISTA_DEMO` em `consumidor/cli.py` e `banco/cli.py` antes de semear.
+
 As chaves entre os serviços (defina as mesmas nos dois lados em qualquer ambiente real):
 `CREDOR_SERVICE_KEY` (o consumidor cria e revoga solicitações no credor), `CREDOR_AGENT_KEY` (o
 agente do Orchestrate só lê e simula) e um segredo JWT por módulo, `CREDOR_JWT_SECRET` e
