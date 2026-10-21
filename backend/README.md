@@ -26,6 +26,12 @@ uv run banco semear --limpar         # cria o analista (analista@scorelyne.demo)
 cd ../frontend && npm run dev        # terminal 4 · http://localhost:3000
 ```
 
+Se a porta 5432 já estiver ocupada por outro Postgres (o erro típico é `password authentication failed
+for user "scorelyne"`, porque você está falando com o banco de outro projeto), suba o do ScoreLyne em
+outra porta e aponte os módulos para ela. No PowerShell: `$env:BANCO_PORTA=5433; docker compose up -d`, e no
+`.env` da raiz `BANCO_DB_URL` e `CONSUMIDOR_DB_URL` com `localhost:5433`. Os comandos `servir` e `semear`
+leem esse `.env`.
+
 Sem Docker, aponte os bancos para SQLite: `BANCO_DB_URL=sqlite:///credor.db` e
 `CONSUMIDOR_DB_URL=sqlite:///consumidor.db`.
 

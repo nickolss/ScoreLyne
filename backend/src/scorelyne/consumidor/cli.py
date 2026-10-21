@@ -46,6 +46,10 @@ def servir(args: argparse.Namespace) -> None:
 
 
 def semear(args: argparse.Namespace) -> None:
+    from dotenv import find_dotenv, load_dotenv
+
+    load_dotenv(find_dotenv(usecwd=True))  # mesmo .env do `servir`: assim os dois falam com o mesmo banco
+
     sessoes = criar_sessoes()
     url = os.getenv("OPERADORA_URL", "http://localhost:8001")
     personas = httpx.get(f"{url}/demo/personas", timeout=10).raise_for_status().json()
