@@ -8,8 +8,44 @@ export type Persona = "publico" | "consumidor" | "credor";
 type Item = { href: string; label: string };
 
 // Cada módulo tem o próprio menu e deixa à vista quem está usando: Consumidor ou Operador de crédito.
-const MENUS: Record<Persona, { casa: string; rotulo: string | null; itens: Item[] }> = {
-  publico: {
+// O menu muda conforme a pessoa esteja logada ou não.
+type Menu = { casa: string; rotulo: string | null; itens: Item[] };
+
+function menuDe(persona: Persona, logado: boolean): Menu {
+  if (persona === "consumidor") {
+    return {
+      casa: "/cliente",
+      rotulo: "Consumidor",
+      itens: logado
+        ? [
+            { href: "/cliente", label: "Início" },
+            { href: "/cliente/score", label: "Meu score" },
+            { href: "/cliente/consentimentos", label: "Consentimentos" },
+            { href: "/cliente/pedidos", label: "Pedidos" },
+            { href: "/cliente/perfil", label: "Perfil" },
+            { href: "/cliente/como-e-calculado", label: "Como é calculado" },
+          ]
+        : [
+            { href: "/cliente", label: "Início" },
+            { href: "/cliente/como-e-calculado", label: "Como é calculado" },
+            { href: "/cliente/entrar", label: "Entrar" },
+          ],
+    };
+  }
+  if (persona === "credor") {
+    return {
+      casa: "/banco",
+      rotulo: "Operador de crédito",
+      itens: logado
+        ? [
+            { href: "/banco", label: "Solicitações" },
+            { href: "/banco/governanca", label: "Governança" },
+            { href: "/banco/perfil", label: "Perfil" },
+          ]
+        : [{ href: "/banco/entrar", label: "Entrar" }],
+    };
+  }
+  return {
     casa: "/",
     rotulo: null,
     itens: [
@@ -17,24 +53,8 @@ const MENUS: Record<Persona, { casa: string; rotulo: string | null; itens: Item[
       { href: "/banco", label: "Sou operador de crédito" },
       { href: "/governanca", label: "Governança" },
     ],
-  },
-  consumidor: {
-    casa: "/cliente",
-    rotulo: "Consumidor",
-    itens: [
-      { href: "/cliente", label: "Meu score" },
-      { href: "/cliente/como-e-calculado", label: "Como é calculado" },
-    ],
-  },
-  credor: {
-    casa: "/banco",
-    rotulo: "Operador de crédito",
-    itens: [
-      { href: "/banco", label: "Solicitações" },
-      { href: "/banco/governanca", label: "Governança" },
-    ],
-  },
-};
+  };
+}
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -52,9 +72,17 @@ export function Logo({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function SiteHeader({ persona, onSair }: { persona: Persona; onSair?: () => Promise<void> }) {
+export function SiteHeader({
+  persona,
+  logado = false,
+  onSair,
+}: {
+  persona: Persona;
+  logado?: boolean;
+  onSair?: () => Promise<void>;
+}) {
   const pathname = usePathname();
-  const menu = MENUS[persona];
+  const menu = menuDe(persona, logado);
 
   // O item ativo é o de caminho mais específico que combina com a página atual.
   const ativo = menu.itens
@@ -75,7 +103,8 @@ export function SiteHeader({ persona, onSair }: { persona: Persona; onSair?: () 
             </span>
           )}
         </div>
-        <nav className="flex items-stretch text-[13px] sm:text-sm font-semibold" aria-label="Principal">
+        {/* Com seis itens o menu rola na horizontal em telas estreitas, em vez de quebrar o cabeçalho. */}
+        <nav className="flex items-stretch overflow-x-auto text-[13px] sm:text-sm font-semibold" aria-label="Principal">
           {menu.itens.map((item) => {
             const atual = item.href === ativo;
             return (

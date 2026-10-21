@@ -7,7 +7,7 @@ export default async function CredorLayout({ children }: LayoutProps<"/">) {
   const logado = Boolean(await tokenDe("credor"));
   return (
     <>
-      <SiteHeader persona="credor" onSair={logado ? sair.bind(null, "credor") : undefined} />
+      <SiteHeader persona="credor" logado={logado} onSair={logado ? sair.bind(null, "credor") : undefined} />
       <main className="flex-1">{children}</main>
       <Rodape />
     </>

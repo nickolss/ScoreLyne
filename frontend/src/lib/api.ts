@@ -211,6 +211,33 @@ export type MeuScore = {
   analise: ResultadoAnalise;
 };
 
+export type Acesso = { em: string; escopos: Escopo[] };
+
+// Um consentimento ativo, com cada leitura dos dados que a operadora registrou.
+export type ConsentimentoDetalhe = {
+  id: string;
+  destinatario: string;
+  finalidade: string;
+  escopos: Escopo[];
+  criado_em: string;
+  expira_em: string;
+  revogado_em: string | null;
+  acessos: Acesso[];
+};
+
+export type PedidoEnviado = {
+  id: string;
+  valor_solicitado: number;
+  finalidade: string;
+  enviado_em: string;
+  encerrado_em: string | null;
+  encerramento: string | null;
+  situacao: SituacaoSolicitacao | null;
+};
+
+export type AnalistaPerfil = { nome: string; email: string };
+export type TrocaDeSenha = { senha_atual: string; nova_senha: string };
+
 export type SessaoLogin = { token: string; tipo: string };
 export type SessaoConsumidor = SessaoLogin & { cliente: Cliente };
 export type SessaoAnalista = SessaoLogin & { nome: string };
@@ -287,6 +314,8 @@ export function criarCredor(f: Fetcher) {
   return {
     login: (p: { email: string; senha: string }) =>
       chamar<SessaoAnalista>(f, "/login", enviar("POST", p)),
+    eu: () => get<AnalistaPerfil>("/eu"),
+    trocarSenha: (p: TrocaDeSenha) => chamar<{ alterada: boolean }>(f, "/minha-conta/senha", enviar("POST", p)),
     listar: () => get<SolicitacaoResumo[]>("/solicitacoes"),
     obter: (x: string) => get<Solicitacao>(`/solicitacoes/${id(x)}`),
     decidir: (x: string, p: { veredito: "aprovar" | "recusar"; justificativa: string }) =>
@@ -307,6 +336,11 @@ export function criarConsumidor(f: Fetcher) {
     login: (p: { cpf: string; senha: string }) =>
       chamar<SessaoConsumidor>(f, "/login", enviar("POST", p)),
     eu: () => get<Cliente>("/me"),
+    meusConsentimentos: () => get<ConsentimentoDetalhe[]>("/meus-consentimentos"),
+    meusPedidos: () => get<PedidoEnviado[]>("/meus-pedidos"),
+    trocarSenha: (p: TrocaDeSenha) => chamar<{ alterada: boolean }>(f, "/minha-conta/senha", enviar("POST", p)),
+    excluirConta: (senha: string) =>
+      chamar<{ excluida: boolean }>(f, "/minha-conta/excluir", enviar("POST", { senha })),
     atualizar: (p: AtualizarDados) => chamar<Cliente>(f, "/meus-dados", enviar("PATCH", p)),
     consentir: (escopos: Escopo[]) => chamar<Consentimento>(f, "/consentimentos", enviar("POST", { escopos })),
     calcular: (p: { valor_solicitado: number; finalidade: string }) =>

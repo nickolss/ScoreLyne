@@ -7,7 +7,7 @@ export default async function ConsumidorLayout({ children }: LayoutProps<"/">) {
   const logado = Boolean(await tokenDe("consumidor"));
   return (
     <>
-      <SiteHeader persona="consumidor" onSair={logado ? sair.bind(null, "consumidor") : undefined} />
+      <SiteHeader persona="consumidor" logado={logado} onSair={logado ? sair.bind(null, "consumidor") : undefined} />
       <main className="flex-1">{children}</main>
       <Rodape />
     </>

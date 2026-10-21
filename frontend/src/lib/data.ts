@@ -42,6 +42,26 @@ export const EXCLUDED_DATA = [
   "Apps instalados",
 ];
 
+// Para quê cada consentimento foi dado, como aparece na tela de consentimentos.
+export const FINALIDADE_LABEL: Record<string, string> = {
+  autoconsulta_de_score: "Calcular o seu score",
+  analise_de_credito: "Analisar o seu pedido de crédito",
+};
+
+// Por que um pedido foi encerrado, como aparece no histórico de pedidos.
+export const ENCERRAMENTO_LABEL: Record<string, string> = {
+  retirado_pelo_cliente: "Você retirou o pedido",
+  consentimento_revogado: "Você revogou o consentimento",
+  dados_alterados: "Você trocou o telefone",
+};
+
+export const dataHora = (iso: string) =>
+  new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+export const dataCurta = (iso: string) => new Date(iso).toLocaleDateString("pt-BR");
+
+export const maskCpf = (c: string) => `${c.slice(0, 3)}.•••.•••-${c.slice(-2)}`;
+
 export const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
 
