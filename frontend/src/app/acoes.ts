@@ -5,9 +5,17 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ApiError, criarConsumidor, criarCredor } from "@/lib/api";
-import { COOKIE, DURACAO_SESSAO_S, type Servico, URLS, fetcher } from "@/lib/api-servidor";
+import {
+  COOKIE,
+  DURACAO_SESSAO_S,
+  type Servico,
+  URLS,
+  consumidorLogado,
+  credorLogado,
+  fetcher,
+} from "@/lib/api-servidor";
 
-export type EstadoForm = { erro?: string };
+export type EstadoForm = { erro?: string; ok?: string };
 
 const texto = (fd: FormData, campo: string) => String(fd.get(campo) ?? "").trim();
 const digitos = (fd: FormData, campo: string) => texto(fd, campo).replace(/\D/g, "");
@@ -73,4 +81,52 @@ export async function sair(servico: Servico) {
   if (!(servico in COOKIE)) return; // o argumento vem do cliente: ignora o que não for um serviço conhecido
   (await cookies()).delete(COOKIE[servico]);
   redirect(servico === "consumidor" ? "/cliente/entrar" : "/banco/entrar");
+}
+
+const confirmacaoDaSenha = (fd: FormData) => {
+  const nova = String(fd.get("nova_senha") ?? "");
+  return nova === String(fd.get("confirmacao") ?? "")
+    ? { senha_atual: String(fd.get("senha_atual") ?? ""), nova_senha: nova }
+    : null;
+};
+
+export async function trocarSenhaConsumidor(_: EstadoForm, fd: FormData): Promise<EstadoForm> {
+  const troca = confirmacaoDaSenha(fd);
+  if (!troca) return { erro: "As senhas novas não conferem." };
+  const api = await consumidorLogado();
+  if (!api) redirect("/cliente/entrar");
+  try {
+    await api.trocarSenha(troca);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) redirect("/cliente/entrar");
+    return { erro: mensagem(e) };
+  }
+  return { ok: "Senha alterada." };
+}
+
+export async function excluirContaConsumidor(_: EstadoForm, fd: FormData): Promise<EstadoForm> {
+  const api = await consumidorLogado();
+  if (!api) redirect("/cliente/entrar");
+  try {
+    await api.excluirConta(String(fd.get("senha") ?? ""));
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) redirect("/cliente/entrar");
+    return { erro: mensagem(e) };
+  }
+  (await cookies()).delete(COOKIE.consumidor);
+  redirect("/cliente?conta=excluida");
+}
+
+export async function trocarSenhaCredor(_: EstadoForm, fd: FormData): Promise<EstadoForm> {
+  const troca = confirmacaoDaSenha(fd);
+  if (!troca) return { erro: "As senhas novas não conferem." };
+  const api = await credorLogado();
+  if (!api) redirect("/banco/entrar");
+  try {
+    await api.trocarSenha(troca);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 401) redirect("/banco/entrar");
+    return { erro: mensagem(e) };
+  }
+  return { ok: "Senha alterada." };
 }

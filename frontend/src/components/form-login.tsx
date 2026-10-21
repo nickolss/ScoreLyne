@@ -66,6 +66,11 @@ export function FormularioAcao({
       </div>
 
       {estado.erro && <CaixaDeErro mensagem={estado.erro} />}
+      {estado.ok && (
+        <p className="mt-6 border border-ink bg-lime px-4 py-3 text-sm font-semibold" role="status">
+          {estado.ok}
+        </p>
+      )}
 
       <button type="submit" disabled={enviando} className={`${btnPrimary} mt-8 w-full sm:w-auto`}>
         {enviando ? pendente : enviar}
