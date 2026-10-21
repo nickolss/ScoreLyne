@@ -53,6 +53,7 @@ export const ENCERRAMENTO_LABEL: Record<string, string> = {
   retirado_pelo_cliente: "Você retirou o pedido",
   consentimento_revogado: "Você revogou o consentimento",
   dados_alterados: "Você trocou o telefone",
+  consentimento_perdido: "O acesso aos seus dados deixou de existir na operadora",
 };
 
 export const dataHora = (iso: string) =>

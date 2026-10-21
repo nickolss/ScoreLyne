@@ -101,7 +101,7 @@ def atualizar(
         # Os consentimentos valem para a linha antiga: revoga tudo e apaga as análises.
         _retirar_do_credor(sessao, credor, c, "dados_alterados")
         if c.consentimento_id:
-            operadora.revogar(c.consentimento_id)
+            operadora.revogar_se_existir(c.consentimento_id)
         _limpar_consentimento(c)
     for campo, valor in mudancas.items():
         setattr(c, campo, valor)
@@ -141,23 +141,57 @@ def consentir(sessao: Session, operadora: Operadora, c: ClienteDB, pedido: Pedid
     return consentimento
 
 
-def consentimentos(operadora: Operadora, c: ClienteDB) -> list[ConsentimentoDetalhe]:
+def _consentimento_perdido(sessao: Session, credor: Credor, c: ClienteDB) -> None:
+    """A operadora não conhece mais um consentimento guardado aqui (ela guarda em memória e reiniciou).
+
+    O acesso aos dados já não existe, então o estado local é encerrado: o pedido no credor é retirado,
+    se ele estiver no ar, e a autorização e o score guardados saem. A pessoa autoriza de novo quando quiser.
+    """
+    try:
+        _retirar_do_credor(sessao, credor, c, "consentimento_perdido")
+    except ErroApi:
+        pass  # credor fora do ar: o pedido segue marcado e pode ser retirado depois
+    _limpar_consentimento(c)
+    sessao.commit()
+
+
+def consentimentos(
+    sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB
+) -> list[ConsentimentoDetalhe]:
     """Os consentimentos ativos da pessoa, com cada acesso que a operadora registrou aos dados dela."""
     saida = []
     for consentimento_id, destinatario in (
         (c.consentimento_id, SOLICITANTE),
         (c.consentimento_credor_id, CREDOR_NOME),
     ):
-        if consentimento_id:
+        if not consentimento_id:
+            continue
+        try:
             dados = operadora.consentimento(consentimento_id)
-            saida.append(ConsentimentoDetalhe.model_validate({**dados, "destinatario": destinatario}))
+        except ErroApi as exc:
+            if exc.status != 404:
+                raise
+            _consentimento_perdido(sessao, credor, c)
+            return []
+        saida.append(ConsentimentoDetalhe.model_validate({**dados, "destinatario": destinatario}))
     return saida
 
 
 def calcular(sessao: Session, operadora: Operadora, c: ClienteDB, pedido: PedidoScore) -> ClienteDB:
     if not c.consentimento_id:
         raise ErroApi(409, "Autorize o uso dos seus dados antes de calcular o score")
-    dados = operadora.dados(c.telefone, c.consentimento_id)
+    try:
+        dados = operadora.dados(c.telefone, c.consentimento_id)
+    except ErroApi as exc:
+        if exc.status == 403:
+            # Expirou, foi revogado ou a operadora o perdeu: o consentimento guardado aqui não serve mais.
+            _limpar_consentimento(c)
+            sessao.commit()
+            raise ErroApi(
+                409,
+                "O seu consentimento não vale mais (expirou ou foi encerrado). Autorize de novo para calcular.",
+            ) from exc
+        raise
     resultado = analisar_com_tratamento(dados, pedido.valor_solicitado)
     c.valor_solicitado = pedido.valor_solicitado
     c.finalidade = pedido.finalidade
@@ -202,7 +236,7 @@ def revogar(sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB)
     """Revoga tudo: o envio ao credor, o consentimento na operadora e o score guardado."""
     _retirar_do_credor(sessao, credor, c, "consentimento_revogado")
     if c.consentimento_id:
-        operadora.revogar(c.consentimento_id)
+        operadora.revogar_se_existir(c.consentimento_id)
         _limpar_consentimento(c)
     sessao.commit()
     return c
@@ -238,7 +272,7 @@ def enviar_ao_credor(sessao: Session, operadora: Operadora, credor: Credor, c: C
             }
         )
     except ErroApi:
-        operadora.revogar(consentimento["id"])  # não deixa consentimento solto se o envio falhou
+        operadora.revogar_se_existir(consentimento["id"])  # não deixa consentimento solto se o envio falhou
         raise
     c.solicitacao_id = solicitacao["id"]
     c.consentimento_credor_id = consentimento["id"]
@@ -311,9 +345,9 @@ def excluir_conta(sessao: Session, operadora: Operadora, credor: Credor, c: Clie
             credor.revogar(c.solicitacao_id)
         except ErroApi:
             if c.consentimento_credor_id:
-                operadora.revogar(c.consentimento_credor_id)
+                operadora.revogar_se_existir(c.consentimento_credor_id)
     if c.consentimento_id:
-        operadora.revogar(c.consentimento_id)
+        operadora.revogar_se_existir(c.consentimento_id)
     sessao.execute(delete(PedidoDB).where(PedidoDB.cliente_id == c.id))
     sessao.delete(c)
     sessao.commit()

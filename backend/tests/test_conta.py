@@ -242,3 +242,82 @@ def test_rotas_do_perfil_do_analista_exigem_login(mundo, caminho):  # noqa: F811
     anonimo = TestClient(analista.app)
     r = anonimo.get(caminho) if caminho == "/eu" else anonimo.post(caminho, json={})
     assert r.status_code in (401, 403)
+
+
+# --- a operadora reinicia e perde os consentimentos (ela os guarda em memória) -------------------
+
+
+def _operadora_reinicia(operadora):
+    operadora.app.state.base.consentimentos.clear()
+
+
+def test_listar_consentimentos_apos_a_operadora_reiniciar_se_recupera(mundo):  # noqa: F811
+    operadora, consumidor, analista = mundo
+    _, h = _com_score(operadora, consumidor, "maria")
+    consumidor.post("/enviar-ao-credor", headers=h).raise_for_status()
+    sid = analista.get("/solicitacoes").json()[0]["id"]
+    _operadora_reinicia(operadora)
+
+    r = consumidor.get("/meus-consentimentos", headers=h)
+
+    assert r.status_code == 200 and r.json() == []  # não quebra: a lista só fica vazia
+    eu = consumidor.get("/me", headers=h).json()
+    assert eu["consentimento_ativo"] is False and eu["enviado_ao_credor"] is False
+    (pedido,) = consumidor.get("/meus-pedidos", headers=h).json()
+    assert pedido["encerramento"] == "consentimento_perdido"
+    assert analista.get(f"/solicitacoes/{sid}").json()["status"] == "revogado"
+
+
+def test_calcular_com_consentimento_perdido_pede_para_autorizar_de_novo(mundo):  # noqa: F811
+    operadora, consumidor, _ = mundo
+    p = _cadastrar(operadora, consumidor, "maria")
+    h = _entrar(consumidor, p["cpf"])
+    consumidor.post("/consentimentos", json={"escopos": TODOS}, headers=h).raise_for_status()
+    _operadora_reinicia(operadora)
+
+    r = consumidor.post("/meu-score", json=PEDIDO, headers=h)
+
+    assert r.status_code == 409 and "Autorize de novo" in r.json()["detail"]
+    assert consumidor.get("/me", headers=h).json()["consentimento_ativo"] is False
+    # e dá para seguir: autorizar de novo e calcular funciona
+    consumidor.post("/consentimentos", json={"escopos": TODOS}, headers=h).raise_for_status()
+    assert consumidor.post("/meu-score", json=PEDIDO, headers=h).status_code == 200
+
+
+def test_revogar_nao_trava_quando_a_operadora_perdeu_o_consentimento(mundo):  # noqa: F811
+    operadora, consumidor, analista = mundo
+    _, h = _com_score(operadora, consumidor, "maria")
+    consumidor.post("/enviar-ao-credor", headers=h).raise_for_status()
+    sid = analista.get("/solicitacoes").json()[0]["id"]
+    _operadora_reinicia(operadora)
+
+    r = consumidor.post("/revogar", headers=h)
+
+    assert r.status_code == 200, r.text
+    assert r.json()["consentimento_ativo"] is False and r.json()["enviado_ao_credor"] is False
+    assert analista.get(f"/solicitacoes/{sid}").json()["status"] == "revogado"
+
+
+def test_excluir_conta_nao_trava_quando_a_operadora_perdeu_os_consentimentos(mundo):  # noqa: F811
+    operadora, consumidor, _ = mundo
+    p, h = _com_score(operadora, consumidor, "maria")
+    consumidor.post("/enviar-ao-credor", headers=h).raise_for_status()
+    _operadora_reinicia(operadora)
+
+    r = consumidor.post("/minha-conta/excluir", json={"senha": SENHA}, headers=h)
+
+    assert r.status_code == 200, r.text
+    assert consumidor.post("/login", json={"cpf": p["cpf"], "senha": SENHA}).status_code == 401
+
+
+def test_credor_revoga_pedido_cujo_consentimento_sumiu_da_operadora(mundo):  # noqa: F811
+    operadora, consumidor, analista = mundo
+    _, h = _com_score(operadora, consumidor, "maria")
+    consumidor.post("/enviar-ao-credor", headers=h).raise_for_status()
+    sid = analista.get("/solicitacoes").json()[0]["id"]
+    _operadora_reinicia(operadora)
+
+    r = analista.post(f"/solicitacoes/{sid}/revogar")  # com a chave de serviço, como o consumidor faz
+
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "revogado" and r.json()["analise"] is None

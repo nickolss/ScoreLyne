@@ -218,7 +218,7 @@ def revogar(sessao: Session, operadora: Operadora, solicitacao_id: str) -> Solic
     s = obter(sessao, solicitacao_id)
     if s.revogado_em:
         return s
-    operadora.revogar(s.consentimento_id)
+    operadora.revogar_se_existir(s.consentimento_id)  # se a operadora o perdeu, o acesso já não existe
     s.revogado_em = agora()
     s.analise = None
     s.score = None

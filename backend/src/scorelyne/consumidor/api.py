@@ -149,9 +149,9 @@ def create_app(
         return servico.consentir(s, operadora, c, pedido)
 
     @app.get("/meus-consentimentos", response_model=list[ConsentimentoDetalhe], tags=["score"])
-    def meus_consentimentos(c: Logado):
+    def meus_consentimentos(c: Logado, s: Db):
         """Os consentimentos ativos e cada acesso aos seus dados registrado pela operadora."""
-        return servico.consentimentos(operadora, c)
+        return servico.consentimentos(s, operadora, credor, c)
 
     @app.post("/meu-score", response_model=MeuScore, tags=["score"])
     def calcular(pedido: PedidoScore, c: Logado, s: Db):

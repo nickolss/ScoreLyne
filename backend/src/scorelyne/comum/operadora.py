@@ -36,3 +36,14 @@ class Operadora:
 
     def revogar(self, consentimento_id: str) -> dict:
         return self._chamar("DELETE", f"/consentimentos/{consentimento_id}")
+
+    def revogar_se_existir(self, consentimento_id: str) -> bool:
+        """Revoga e devolve True. Se a operadora não conhece mais o consentimento (por exemplo, ela
+        reiniciou e perdeu a memória), não há nada a revogar: devolve False em vez de travar quem quer sair."""
+        try:
+            self.revogar(consentimento_id)
+        except ErroApi as exc:
+            if exc.status == 404:
+                return False
+            raise
+        return True
