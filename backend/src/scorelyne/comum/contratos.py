@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from scorelyne.score.politica import Decisao, Oferta
 
@@ -44,3 +44,8 @@ class SituacaoSolicitacao(BaseModel):
     motivos_revisao: list[str]
     revisao_humana: RevisaoHumana | None
     atualizado_em: datetime
+
+
+class TrocaDeSenha(BaseModel):
+    senha_atual: str = Field(min_length=1, max_length=72)
+    nova_senha: str = Field(min_length=8, max_length=72)

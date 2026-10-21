@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from scorelyne.comum.auth import Autenticador
 from scorelyne.comum.cartao import CartaoModelo, cartao_modelo
-from scorelyne.comum.contratos import SituacaoSolicitacao
+from scorelyne.comum.contratos import SituacaoSolicitacao, TrocaDeSenha
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.operadora.models import Consentimento
@@ -27,9 +27,12 @@ from .esquemas import (
     AtualizarDados,
     Cadastro,
     Cliente,
+    ConsentimentoDetalhe,
+    ExcluirConta,
     Login,
     MeuScore,
     PedidoConsentimento,
+    PedidoEnviado,
     PedidoScore,
     Sessao,
 )
@@ -127,12 +130,28 @@ def create_app(
         """Corrige ocupação, cidade, UF ou telefone. Trocar o telefone revoga o consentimento."""
         return servico.publico(servico.atualizar(s, operadora, credor, c, dados))
 
+    @app.post("/minha-conta/senha", tags=["conta"])
+    def trocar_senha(dados: TrocaDeSenha, c: Logado, s: Db):
+        servico.trocar_senha(s, c, dados)
+        return {"alterada": True}
+
+    @app.post("/minha-conta/excluir", tags=["conta"])
+    def excluir_conta(dados: ExcluirConta, c: Logado, s: Db):
+        """Direito de exclusão: revoga tudo e apaga o cadastro, o score e o histórico. Pede a senha."""
+        servico.excluir_conta(s, operadora, credor, c, dados.senha)
+        return {"excluida": True}
+
     # --- Consentimento e score ------------------------------------------------------
 
     @app.post("/consentimentos", status_code=201, response_model=Consentimento, tags=["score"])
     def consentir(pedido: PedidoConsentimento, c: Logado, s: Db):
         """Autoriza a leitura dos seus dados na operadora, só dos blocos escolhidos."""
         return servico.consentir(s, operadora, c, pedido)
+
+    @app.get("/meus-consentimentos", response_model=list[ConsentimentoDetalhe], tags=["score"])
+    def meus_consentimentos(c: Logado):
+        """Os consentimentos ativos e cada acesso aos seus dados registrado pela operadora."""
+        return servico.consentimentos(operadora, c)
 
     @app.post("/meu-score", response_model=MeuScore, tags=["score"])
     def calcular(pedido: PedidoScore, c: Logado, s: Db):
@@ -159,6 +178,11 @@ def create_app(
     def minha_solicitacao(c: Logado):
         """Situação do pedido: decisão, justificativa do analista e oferta."""
         return servico.minha_solicitacao(credor, c)
+
+    @app.get("/meus-pedidos", response_model=list[PedidoEnviado], tags=["credor"])
+    def meus_pedidos(c: Logado, s: Db):
+        """Histórico dos pedidos ao credor, do mais recente ao mais antigo."""
+        return servico.pedidos(s, credor, c)
 
     @app.post("/retirar-do-credor", response_model=Cliente, tags=["credor"])
     def retirar_do_credor(c: Logado, s: Db):

@@ -49,6 +49,22 @@ class ClienteDB(Base):
     calculado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class PedidoDB(Base):
+    """Cada pedido enviado ao credor. Fica mesmo depois de retirado, para a pessoa ver o histórico."""
+
+    __tablename__ = "pedidos"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    cliente_id: Mapped[str] = mapped_column(String(36), index=True)
+    solicitacao_id: Mapped[str] = mapped_column(String(36), unique=True)
+    valor_solicitado: Mapped[float] = mapped_column(Float)
+    finalidade: Mapped[str] = mapped_column(String(200))
+    enviado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=agora)
+    encerrado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # retirado_pelo_cliente | consentimento_revogado | dados_alterados
+    encerramento: Mapped[str | None] = mapped_column(String(40))
+
+
 def criar_sessoes(url: str | None = None) -> sessionmaker:
     url = url or os.getenv("CONSUMIDOR_DB_URL", URL_PADRAO)
     if url.startswith("sqlite"):

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from scorelyne.comum.analise import analisar_com_tratamento
 from scorelyne.comum.auth import hash_senha, senha_confere
+from scorelyne.comum.contratos import TrocaDeSenha
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.score import politica
@@ -252,3 +253,12 @@ def obter_analista(sessao: Session, analista_id: str) -> AnalistaDB:
     if a is None:
         raise ErroBanco(401, "Analista não encontrado")
     return a
+
+
+def trocar_senha_analista(sessao: Session, a: AnalistaDB, dados: TrocaDeSenha) -> None:
+    if not senha_confere(dados.senha_atual, a.senha_hash):
+        raise ErroBanco(403, "A senha atual está incorreta")
+    if dados.nova_senha == dados.senha_atual:
+        raise ErroBanco(422, "A nova senha precisa ser diferente da atual")
+    a.senha_hash = hash_senha(dados.nova_senha)
+    sessao.commit()

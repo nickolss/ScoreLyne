@@ -37,6 +37,11 @@ class SessaoAnalista(BaseModel):
     nome: str
 
 
+class AnalistaPerfil(BaseModel):
+    nome: str
+    email: str
+
+
 class DecisaoAnalista(BaseModel):
     """Veredito e justificativa. Quem decidiu vem do login, nunca do corpo da requisição."""
 

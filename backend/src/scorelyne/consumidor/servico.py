@@ -1,28 +1,31 @@
-"""Regras do lado do consumidor: cadastro, consentimento e cálculo do próprio score."""
+"""Regras do lado do consumidor: conta, consentimento, score, pedidos e controle dos próprios dados."""
 
 from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from scorelyne.comum.analise import analisar_com_tratamento
 from scorelyne.comum.auth import hash_senha, senha_confere
+from scorelyne.comum.contratos import SituacaoSolicitacao, TrocaDeSenha
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.score.analise import ResultadoAnalise
 
 from .credor import Credor
-from .db import ClienteDB, agora
+from .db import ClienteDB, PedidoDB, agora
 from .esquemas import (
     AtualizarDados,
     Cadastro,
     Cliente,
+    ConsentimentoDetalhe,
     Login,
     MeuScore,
     PedidoConsentimento,
+    PedidoEnviado,
     PedidoScore,
 )
 
@@ -96,7 +99,7 @@ def atualizar(
     mudancas = dados.model_dump(exclude_none=True)
     if mudancas.get("telefone", c.telefone) != c.telefone:
         # Os consentimentos valem para a linha antiga: revoga tudo e apaga as análises.
-        _retirar_do_credor(credor, c)
+        _retirar_do_credor(sessao, credor, c, "dados_alterados")
         if c.consentimento_id:
             operadora.revogar(c.consentimento_id)
         _limpar_consentimento(c)
@@ -108,6 +111,15 @@ def atualizar(
         sessao.rollback()
         raise ErroApi(409, "Já existe um cadastro com este telefone") from exc
     return c
+
+
+def trocar_senha(sessao: Session, c: ClienteDB, dados: TrocaDeSenha) -> None:
+    if not senha_confere(dados.senha_atual, c.senha_hash):
+        raise ErroApi(403, "A senha atual está incorreta")
+    if dados.nova_senha == dados.senha_atual:
+        raise ErroApi(422, "A nova senha precisa ser diferente da atual")
+    c.senha_hash = hash_senha(dados.nova_senha)
+    sessao.commit()
 
 
 def consentir(sessao: Session, operadora: Operadora, c: ClienteDB, pedido: PedidoConsentimento) -> dict:
@@ -127,6 +139,19 @@ def consentir(sessao: Session, operadora: Operadora, c: ClienteDB, pedido: Pedid
     c.escopos = [e.value for e in pedido.escopos]
     sessao.commit()
     return consentimento
+
+
+def consentimentos(operadora: Operadora, c: ClienteDB) -> list[ConsentimentoDetalhe]:
+    """Os consentimentos ativos da pessoa, com cada acesso que a operadora registrou aos dados dela."""
+    saida = []
+    for consentimento_id, destinatario in (
+        (c.consentimento_id, SOLICITANTE),
+        (c.consentimento_credor_id, CREDOR_NOME),
+    ):
+        if consentimento_id:
+            dados = operadora.consentimento(consentimento_id)
+            saida.append(ConsentimentoDetalhe.model_validate({**dados, "destinatario": destinatario}))
+    return saida
 
 
 def calcular(sessao: Session, operadora: Operadora, c: ClienteDB, pedido: PedidoScore) -> ClienteDB:
@@ -155,17 +180,27 @@ def meu_score(c: ClienteDB) -> MeuScore:
     )
 
 
-def _retirar_do_credor(credor: Credor, c: ClienteDB) -> None:
+def _encerrar_pedido(sessao: Session, c: ClienteDB, motivo: str) -> None:
+    if not c.solicitacao_id:
+        return
+    pedido = sessao.scalar(select(PedidoDB).where(PedidoDB.solicitacao_id == c.solicitacao_id))
+    if pedido and pedido.encerrado_em is None:
+        pedido.encerrado_em = agora()
+        pedido.encerramento = motivo
+
+
+def _retirar_do_credor(sessao: Session, credor: Credor, c: ClienteDB, motivo: str) -> None:
     """O credor revoga o consentimento dele na operadora e apaga a análise. Falhou? Nada muda aqui."""
     if c.solicitacao_id:
         credor.revogar(c.solicitacao_id)
+        _encerrar_pedido(sessao, c, motivo)
         c.solicitacao_id = None
         c.consentimento_credor_id = None
 
 
 def revogar(sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB) -> ClienteDB:
     """Revoga tudo: o envio ao credor, o consentimento na operadora e o score guardado."""
-    _retirar_do_credor(credor, c)
+    _retirar_do_credor(sessao, credor, c, "consentimento_revogado")
     if c.consentimento_id:
         operadora.revogar(c.consentimento_id)
         _limpar_consentimento(c)
@@ -207,6 +242,15 @@ def enviar_ao_credor(sessao: Session, operadora: Operadora, credor: Credor, c: C
         raise
     c.solicitacao_id = solicitacao["id"]
     c.consentimento_credor_id = consentimento["id"]
+    sessao.add(
+        PedidoDB(
+            id=str(uuid.uuid4()),
+            cliente_id=c.id,
+            solicitacao_id=solicitacao["id"],
+            valor_solicitado=c.valor_solicitado,
+            finalidade=c.finalidade,
+        )
+    )
     sessao.commit()
     return c
 
@@ -215,7 +259,7 @@ def retirar_do_credor(sessao: Session, credor: Credor, c: ClienteDB) -> ClienteD
     """Desfaz só o envio ao credor. O consentimento e o score do próprio consumidor continuam."""
     if not c.solicitacao_id:
         raise ErroApi(409, "Você não tem nenhum pedido enviado")
-    _retirar_do_credor(credor, c)
+    _retirar_do_credor(sessao, credor, c, "retirado_pelo_cliente")
     sessao.commit()
     return c
 
@@ -224,3 +268,52 @@ def minha_solicitacao(credor: Credor, c: ClienteDB) -> dict:
     if not c.solicitacao_id:
         raise ErroApi(404, "Você ainda não enviou nenhum pedido ao credor")
     return credor.situacao(c.solicitacao_id)
+
+
+def pedidos(sessao: Session, credor: Credor, c: ClienteDB) -> list[PedidoEnviado]:
+    """Histórico dos pedidos ao credor. Só o que ainda está aberto consulta a situação atual."""
+    linhas = sessao.scalars(
+        select(PedidoDB).where(PedidoDB.cliente_id == c.id).order_by(PedidoDB.enviado_em.desc())
+    ).all()
+    saida = []
+    for p in linhas:
+        situacao = None
+        if p.encerrado_em is None:
+            try:
+                situacao = SituacaoSolicitacao.model_validate(credor.situacao(p.solicitacao_id))
+            except ErroApi:
+                situacao = None  # credor fora do ar: o histórico continua aparecendo
+        saida.append(
+            PedidoEnviado(
+                id=p.id,
+                valor_solicitado=p.valor_solicitado,
+                finalidade=p.finalidade,
+                enviado_em=p.enviado_em,
+                encerrado_em=p.encerrado_em,
+                encerramento=p.encerramento,
+                situacao=situacao,
+            )
+        )
+    return saida
+
+
+def excluir_conta(sessao: Session, operadora: Operadora, credor: Credor, c: ClienteDB, senha: str) -> None:
+    """Direito de exclusão (LGPD): revoga tudo e apaga o cadastro, o score e o histórico de pedidos.
+
+    Se o credor estiver fora do ar, o consentimento dele é revogado direto na operadora, o que bloqueia
+    qualquer leitura nova; a análise que o credor já guardava só some quando ele voltar e processar a
+    revogação. Se a operadora também falhar, a exclusão é recusada, para nunca deixar acesso aberto.
+    """
+    if not senha_confere(senha, c.senha_hash):
+        raise ErroApi(403, "A senha está incorreta")
+    if c.solicitacao_id:
+        try:
+            credor.revogar(c.solicitacao_id)
+        except ErroApi:
+            if c.consentimento_credor_id:
+                operadora.revogar(c.consentimento_credor_id)
+    if c.consentimento_id:
+        operadora.revogar(c.consentimento_id)
+    sessao.execute(delete(PedidoDB).where(PedidoDB.cliente_id == c.id))
+    sessao.delete(c)
+    sessao.commit()

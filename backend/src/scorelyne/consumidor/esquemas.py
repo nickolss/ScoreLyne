@@ -7,8 +7,9 @@ from typing import Annotated
 
 from pydantic import BaseModel, Field, field_validator
 
+from scorelyne.comum.contratos import SituacaoSolicitacao
 from scorelyne.operadora.generator import cpf_valido
-from scorelyne.operadora.models import Escopo
+from scorelyne.operadora.models import Acesso, Escopo
 from scorelyne.score.analise import ResultadoAnalise
 
 
@@ -78,3 +79,30 @@ class MeuScore(BaseModel):
     calculado_em: datetime
     escopos: list[Escopo]
     analise: ResultadoAnalise
+
+
+class ConsentimentoDetalhe(BaseModel):
+    """Um consentimento ativo, com o histórico de quem leu os dados da pessoa e quando."""
+
+    id: str
+    destinatario: str
+    finalidade: str
+    escopos: list[Escopo]
+    criado_em: datetime
+    expira_em: datetime
+    revogado_em: datetime | None = None
+    acessos: list[Acesso] = []
+
+
+class PedidoEnviado(BaseModel):
+    id: str
+    valor_solicitado: float
+    finalidade: str
+    enviado_em: datetime
+    encerrado_em: datetime | None
+    encerramento: str | None
+    situacao: SituacaoSolicitacao | None  # só nos pedidos ainda abertos
+
+
+class ExcluirConta(BaseModel):
+    senha: str = Field(min_length=1, max_length=72)

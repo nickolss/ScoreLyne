@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from scorelyne.comum.auth import Autenticador, bearer, chave_valida
 from scorelyne.comum.cartao import CartaoModelo, cartao_modelo
+from scorelyne.comum.contratos import TrocaDeSenha
 from scorelyne.comum.erros import ErroApi
 from scorelyne.comum.operadora import Operadora
 from scorelyne.operadora.models import DadosLinha
@@ -31,6 +32,7 @@ from scorelyne.score.modelo import carregar_modelo
 from . import agente, copiloto, servico
 from .db import AnalistaDB, criar_sessoes
 from .esquemas import (
+    AnalistaPerfil,
     DecisaoAnalista,
     LoginAnalista,
     NovaSolicitacao,
@@ -130,6 +132,15 @@ def create_app(
     def login(dados: LoginAnalista, s: Sessao):
         a = servico.autenticar_analista(s, dados)
         return SessaoAnalista(token=auth.criar_token(a.id), nome=a.nome)
+
+    @app.get("/eu", response_model=AnalistaPerfil, tags=["analista"])
+    def eu(a: Analista):
+        return AnalistaPerfil(nome=a.nome, email=a.email)
+
+    @app.post("/minha-conta/senha", tags=["analista"])
+    def trocar_senha(dados: TrocaDeSenha, a: Analista, s: Sessao):
+        servico.trocar_senha_analista(s, a, dados)
+        return {"alterada": True}
 
     # --- Solicitações ----------------------------------------------------------
 
