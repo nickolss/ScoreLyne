@@ -93,6 +93,11 @@ def gerar_spec(url_servidor: str) -> dict[str, Any]:
         op["operationId"] = f.nome
         op["description"] = f.descricao
         op["responses"] = {c: r for c, r in op["responses"].items() if c != "422"}
+        # A autenticação é uma conexão do Orchestrate (chave de API), não um argumento da ferramenta.
+        op["parameters"] = [p for p in op.get("parameters", []) if not p["name"].lower().startswith("x-")]
+        if not op["parameters"]:
+            del op["parameters"]
+        op["security"] = [{"agenteKey": []}]
         caminhos.setdefault(f.caminho, {})[f.metodo] = op
 
     # Mantém só os schemas alcançáveis a partir das operações escolhidas
@@ -116,7 +121,10 @@ def gerar_spec(url_servidor: str) -> dict[str, Any]:
         },
         "servers": [{"url": url_servidor.rstrip("/")}],
         "paths": _schemas_em(caminhos),
-        "components": {"schemas": {nome: _para_30(todos[nome]) for nome in sorted(usados)}},
+        "components": {
+            "schemas": {nome: _para_30(todos[nome]) for nome in sorted(usados)},
+            "securitySchemes": {"agenteKey": {"type": "apiKey", "in": "header", "name": "X-Agent-Key"}},
+        },
     }
 
 

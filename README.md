@@ -115,6 +115,10 @@ Dado que a solução lida com dados pessoais sensíveis e decisões de crédito,
 
 ---
 
+## Como rodar e logins de demonstração
+
+Passo a passo, variáveis e logins de teste (analista e consumidores) em [`backend/README.md`](backend/README.md#logins-de-demonstração).
+
 ## Documentação
 
 - [`Proposta_Credit_Scoring_Telco.docx`](Proposta_Credit_Scoring_Telco.docx) — Proposta detalhada do projeto

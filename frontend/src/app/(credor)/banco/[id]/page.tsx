@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { BackendDown } from "@/components/backend-down";
 import { Copilot } from "@/components/copilot";
 import { BaseLine, DecisionBadge, FactorLines, ScoreScale, ScoreTotal } from "@/components/score";
-import { ApiError, banco, type Evento, type Solicitacao } from "@/lib/api";
+import { ApiError, type Evento, type Solicitacao } from "@/lib/api";
+import { credorLogado } from "@/lib/api-servidor";
 import { DECISION_LABEL, PLAN_LABEL, brl, fmtPts, maskPhone, pct } from "@/lib/data";
 import { ReviewPanel } from "./review-panel";
 
 export const dynamic = "force-dynamic";
 
 async function load(id: string): Promise<Solicitacao | ApiError> {
+  const credor = await credorLogado();
+  if (!credor) redirect("/banco/entrar");
   try {
-    return await banco.obter(id);
+    return await credor.obter(id);
   } catch (e) {
+    if (e instanceof ApiError && e.status === 401) redirect("/banco/entrar");
     if (e instanceof ApiError && e.status === 404) notFound();
     return e instanceof ApiError ? e : new ApiError(500, "Erro ao carregar a solicitação.");
   }

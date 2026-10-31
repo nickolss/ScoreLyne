@@ -4,7 +4,6 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
-from scorelyne.banco.api import create_app as criar_banco
 from scorelyne.operadora.api import create_app as criar_operadora
 
 TODOS = ["recargas", "permanencia", "pontualidade", "estabilidade", "consistencia"]
@@ -22,11 +21,9 @@ class _Ponte(httpx.BaseTransport):
 
 
 @pytest.fixture
-def apis():
+def apis(credor):
     operadora = TestClient(criar_operadora(tamanho_populacao=50, semente=1, demo=True))
-    banco = TestClient(
-        criar_banco(db_url="sqlite://", operadora_url="http://operadora", transporte=_Ponte(operadora))
-    )
+    banco = credor(db_url="sqlite://", operadora_url="http://operadora", transporte=_Ponte(operadora))
     return operadora, banco
 
 
@@ -97,6 +94,20 @@ def test_analista_decide_revisao_e_pode_desfazer(apis):
     desfeito = banco.delete(f"/solicitacoes/{s['id']}/decisao").json()
     assert desfeito["status"] == "revisao" and desfeito["revisao_humana"] is None
     assert desfeito["eventos"][-1]["tipo"] == "decisao_desfeita"
+
+
+def test_decisao_registra_o_analista_do_login_e_nao_o_do_corpo(apis):
+    operadora, banco = apis
+    s = _pedir(operadora, banco, "luciana", valor=1000).json()
+    d = banco.post(
+        f"/solicitacoes/{s['id']}/decisao",
+        json={
+            "veredito": "aprovar",
+            "justificativa": "Recargas regulares compensam o tempo curto de base",
+            "analista": "Outra Pessoa",
+        },
+    ).json()
+    assert d["revisao_humana"]["analista"] == "Ana Analista"
 
 
 def test_analista_pode_sobrepor_o_agente(apis):
@@ -183,18 +194,16 @@ class _WatsonxFalso(httpx.BaseTransport):
         return httpx.Response(200, json={"choices": [{"message": mensagem}]})
 
 
-def test_copiloto_chama_ferramenta_e_responde():
+def test_copiloto_chama_ferramenta_e_responde(credor):
     from scorelyne.banco.copiloto import ConfigWatsonx, Watsonx
 
     operadora = TestClient(criar_operadora(tamanho_populacao=50, semente=1, demo=True))
     falso = _WatsonxFalso()
-    banco = TestClient(
-        criar_banco(
-            db_url="sqlite://",
-            operadora_url="http://operadora",
-            transporte=_Ponte(operadora),
-            assistente=Watsonx(ConfigWatsonx("http://wx", "k", "p", None, "ibm/granite-4-h-small"), falso),
-        )
+    banco = credor(
+        db_url="sqlite://",
+        operadora_url="http://operadora",
+        transporte=_Ponte(operadora),
+        assistente=Watsonx(ConfigWatsonx("http://wx", "k", "p", None, "ibm/granite-4-h-small"), falso),
     )
     _pedir(operadora, banco, "luciana")
 
@@ -211,9 +220,9 @@ def test_copiloto_chama_ferramenta_e_responde():
     assert falso.corpos[0]["project_id"] == "p"
 
 
-def test_copiloto_desligado_sem_credenciais(monkeypatch):
+def test_copiloto_desligado_sem_credenciais(monkeypatch, credor):
     monkeypatch.delenv("WATSONX_APIKEY", raising=False)
-    banco = TestClient(criar_banco(db_url="sqlite://", operadora_url="http://operadora"))
+    banco = credor(db_url="sqlite://", operadora_url="http://operadora")
     status = banco.get("/copiloto").json()
     assert status["disponivel"] is False and status["provedor"] is None
     assert len(status["perguntas"]) == 4
@@ -221,7 +230,7 @@ def test_copiloto_desligado_sem_credenciais(monkeypatch):
     assert r.status_code == 503
 
 
-def test_copiloto_via_orchestrate(apis):
+def test_copiloto_via_orchestrate(credor):
     from scorelyne.banco.copiloto import ConfigOrchestrate, Orchestrate
 
     pedidos: list[httpx.Request] = []
@@ -238,9 +247,7 @@ def test_copiloto_via_orchestrate(apis):
     assistente = Orchestrate(
         ConfigOrchestrate("https://wxo/instances/i", "k", "ag1"), httpx.MockTransport(responder)
     )
-    banco = TestClient(
-        criar_banco(db_url="sqlite://", operadora_url="http://operadora", assistente=assistente)
-    )
+    banco = credor(db_url="sqlite://", operadora_url="http://operadora", assistente=assistente)
 
     assert banco.get("/copiloto").json()["provedor"] == "watsonx Orchestrate"
     r = banco.post(

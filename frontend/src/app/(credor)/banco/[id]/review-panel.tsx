@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ApiError, banco, type Decisao, type RevisaoHumana } from "@/lib/api";
+import { ApiError, type Decisao, type RevisaoHumana } from "@/lib/api";
+import { credorNoBrowser } from "@/lib/api-browser";
 
 export function ReviewPanel({
   id,
@@ -32,6 +33,10 @@ export function ReviewPanel({
       // Recarrega o server component com a solicitação e a trilha atualizadas.
       router.refresh();
     } catch (e) {
+      if (e instanceof ApiError && e.status === 401) {
+        router.push("/banco/entrar"); // a sessão do analista venceu
+        return;
+      }
       setError(e instanceof ApiError ? e.message : "Não foi possível salvar. Tente de novo.");
     } finally {
       setBusy(false);
@@ -53,7 +58,7 @@ export function ReviewPanel({
           </p>
           {error && <p className="mt-3 text-sm text-red-ink">{error}</p>}
           <button
-            onClick={() => run(() => banco.desfazer(id))}
+            onClick={() => run(() => credorNoBrowser.desfazer(id))}
             disabled={busy}
             className="mt-4 text-sm font-semibold underline hover:no-underline disabled:opacity-50"
           >
@@ -100,14 +105,14 @@ export function ReviewPanel({
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             disabled={!ready}
-            onClick={() => run(() => banco.decidir(id, { veredito: "aprovar", justificativa: note.trim() }))}
+            onClick={() => run(() => credorNoBrowser.decidir(id, { veredito: "aprovar", justificativa: note.trim() }))}
             className="bg-ink text-paper py-3 text-sm font-semibold hover:bg-cobalt transition-colors disabled:opacity-35 disabled:hover:bg-ink disabled:cursor-not-allowed"
           >
             Aprovar
           </button>
           <button
             disabled={!ready}
-            onClick={() => run(() => banco.decidir(id, { veredito: "recusar", justificativa: note.trim() }))}
+            onClick={() => run(() => credorNoBrowser.decidir(id, { veredito: "recusar", justificativa: note.trim() }))}
             className="border border-red-ink text-red-ink py-3 text-sm font-semibold hover:bg-red hover:text-paper hover:border-red transition-colors disabled:opacity-35 disabled:hover:bg-transparent disabled:hover:text-red-ink disabled:cursor-not-allowed"
           >
             Recusar

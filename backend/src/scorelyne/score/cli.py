@@ -36,6 +36,10 @@ def treinar(args: argparse.Namespace) -> None:
         )
         status = "ok" if r["passa_regra_4_5"] else "ATENÇÃO"
         print(f"  {dimensao:<7} razão {r['razao_impacto']} [{status}]  {taxas}")
+        cal = "calibrado" if r["calibrado_em_todos_os_grupos"] else "DESCALIBRADO"
+        print(
+            f"          {cal}: erro máximo entre PD prevista e inadimplência real {r['erro_calibracao_maximo']:.1%}"
+        )
 
 
 def main() -> None:

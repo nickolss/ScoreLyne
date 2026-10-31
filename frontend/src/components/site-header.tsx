@@ -3,11 +3,58 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
-const NAV = [
-  { href: "/cliente", label: "Para você" },
-  { href: "/banco", label: "Para bancos" },
-  { href: "/governanca", label: "Governança" },
-];
+export type Persona = "publico" | "consumidor" | "credor";
+
+type Item = { href: string; label: string };
+
+// Cada módulo tem o próprio menu e deixa à vista quem está usando: Consumidor ou Operador de crédito.
+// O menu muda conforme a pessoa esteja logada ou não.
+type Menu = { casa: string; rotulo: string | null; itens: Item[] };
+
+function menuDe(persona: Persona, logado: boolean): Menu {
+  if (persona === "consumidor") {
+    return {
+      casa: "/cliente",
+      rotulo: "Consumidor",
+      itens: logado
+        ? [
+            { href: "/cliente", label: "Início" },
+            { href: "/cliente/score", label: "Meu score" },
+            { href: "/cliente/consentimentos", label: "Consentimentos" },
+            { href: "/cliente/pedidos", label: "Pedidos" },
+            { href: "/cliente/perfil", label: "Perfil" },
+            { href: "/cliente/como-e-calculado", label: "Como é calculado" },
+          ]
+        : [
+            { href: "/cliente", label: "Início" },
+            { href: "/cliente/como-e-calculado", label: "Como é calculado" },
+            { href: "/cliente/entrar", label: "Entrar" },
+          ],
+    };
+  }
+  if (persona === "credor") {
+    return {
+      casa: "/banco",
+      rotulo: "Operador de crédito",
+      itens: logado
+        ? [
+            { href: "/banco", label: "Solicitações" },
+            { href: "/banco/governanca", label: "Governança" },
+            { href: "/banco/perfil", label: "Perfil" },
+          ]
+        : [{ href: "/banco/entrar", label: "Entrar" }],
+    };
+  }
+  return {
+    casa: "/",
+    rotulo: null,
+    itens: [
+      { href: "/cliente", label: "Sou consumidor" },
+      { href: "/banco", label: "Sou operador de crédito" },
+      { href: "/governanca", label: "Governança" },
+    ],
+  };
+}
 
 export function Logo({ compact = false }: { compact?: boolean }) {
   return (
@@ -25,32 +72,77 @@ export function Logo({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function SiteHeader() {
+export function SiteHeader({
+  persona,
+  logado = false,
+  onSair,
+}: {
+  persona: Persona;
+  logado?: boolean;
+  onSair?: () => Promise<void>;
+}) {
   const pathname = usePathname();
+  const menu = menuDe(persona, logado);
+
+  // O item ativo é o de caminho mais específico que combina com a página atual.
+  const ativo = menu.itens
+    .filter((i) => pathname === i.href || pathname.startsWith(`${i.href}/`))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+
   return (
     <header className="sticky top-0 z-30 bg-paper border-b border-ink">
       <div className="mx-auto max-w-7xl px-4 sm:px-8 h-14 flex items-stretch justify-between gap-3">
-        <Link href="/" aria-label="ScoreLyne, início" className="flex items-center">
-          <Logo compact />
-        </Link>
-        <nav className="flex items-stretch text-[13px] sm:text-sm font-semibold">
-          {NAV.map((item) => {
-            const active = pathname.startsWith(item.href);
+        <div className="flex items-center gap-3 min-w-0">
+          <Link href={menu.casa} aria-label="ScoreLyne, início" className="flex items-center">
+            <Logo compact />
+          </Link>
+          {menu.rotulo && (
+            <span className="label border border-ink bg-lime px-2 py-1 whitespace-nowrap">
+              <span className="sr-only">Persona: </span>
+              {menu.rotulo}
+            </span>
+          )}
+        </div>
+        {/* Com seis itens o menu rola na horizontal em telas estreitas, em vez de quebrar o cabeçalho. */}
+        <nav className="flex items-stretch overflow-x-auto text-[13px] sm:text-sm font-semibold" aria-label="Principal">
+          {menu.itens.map((item) => {
+            const atual = item.href === ativo;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                aria-current={active ? "page" : undefined}
+                aria-current={atual ? "page" : undefined}
                 className={`flex items-center whitespace-nowrap px-2 sm:px-4 border-l border-rule last:border-r transition-colors ${
-                  active ? "bg-cobalt text-on-cobalt" : "hover:bg-tint"
+                  atual ? "bg-cobalt text-on-cobalt" : "hover:bg-tint"
                 }`}
               >
                 {item.label}
               </Link>
             );
           })}
+          {onSair && (
+            <form action={onSair} className="flex items-stretch">
+              <button
+                type="submit"
+                className="flex items-center whitespace-nowrap px-2 sm:px-4 border-r border-rule hover:bg-tint transition-colors"
+              >
+                Sair
+              </button>
+            </form>
+          )}
         </nav>
       </div>
     </header>
+  );
+}
+
+export function Rodape() {
+  return (
+    <footer className="border-t border-ink">
+      <div className="mx-auto max-w-7xl px-4 sm:px-8 py-8 flex flex-col sm:flex-row gap-4 sm:items-center justify-between">
+        <Logo />
+        <p className="label text-ink-2">Credit scoring a partir do seu histórico telecom</p>
+      </div>
+    </footer>
   );
 }

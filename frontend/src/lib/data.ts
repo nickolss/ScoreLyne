@@ -42,22 +42,26 @@ export const EXCLUDED_DATA = [
   "Apps instalados",
 ];
 
-// O que cada pessoa declara no pedido. Telefone, CPF e plano vêm da operadora (/demo/personas).
-export type PersonaPedido = {
-  chave: string;
-  occupation: string;
-  tenureMonths: number;
-  requested: number;
-  purpose: string;
+// Para quê cada consentimento foi dado, como aparece na tela de consentimentos.
+export const FINALIDADE_LABEL: Record<string, string> = {
+  autoconsulta_de_score: "Calcular o seu score",
+  analise_de_credito: "Analisar o seu pedido de crédito",
 };
 
-export const PERSONA_PEDIDOS: PersonaPedido[] = [
-  { chave: "maria", occupation: "Cabeleireira autônoma", tenureMonths: 74, requested: 1500, purpose: "Equipamentos (secador e prancha)" },
-  { chave: "joao", occupation: "Motorista de aplicativo", tenureMonths: 38, requested: 3000, purpose: "Reparo do veículo" },
-  { chave: "ana", occupation: "Vendedora ambulante", tenureMonths: 14, requested: 800, purpose: "Capital de giro" },
-  { chave: "carlos", occupation: "Pedreiro", tenureMonths: 112, requested: 5000, purpose: "Ferramentas" },
-  { chave: "luciana", occupation: "Manicure", tenureMonths: 5, requested: 1000, purpose: "Materiais de trabalho" },
-];
+// Por que um pedido foi encerrado, como aparece no histórico de pedidos.
+export const ENCERRAMENTO_LABEL: Record<string, string> = {
+  retirado_pelo_cliente: "Você retirou o pedido",
+  consentimento_revogado: "Você revogou o consentimento",
+  dados_alterados: "Você trocou o telefone",
+  consentimento_perdido: "O acesso aos seus dados deixou de existir na operadora",
+};
+
+export const dataHora = (iso: string) =>
+  new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+
+export const dataCurta = (iso: string) => new Date(iso).toLocaleDateString("pt-BR");
+
+export const maskCpf = (c: string) => `${c.slice(0, 3)}.•••.•••-${c.slice(-2)}`;
 
 export const brl = (v: number) =>
   v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
@@ -70,15 +74,6 @@ export const pct = (v: number, digits = 0) =>
 export function fmtPts(v: number, signed = true) {
   const r = Math.round(v * 10) / 10 || 0; // evita "-0,0"
   return (signed && r > 0 ? "+" : "") + r.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-export function tenureLabel(months: number) {
-  const y = Math.floor(months / 12);
-  const m = months % 12;
-  const parts = [];
-  if (y) parts.push(`${y} ${y === 1 ? "ano" : "anos"}`);
-  if (m) parts.push(`${m} ${m === 1 ? "mês" : "meses"}`);
-  return parts.join(" e ") || "menos de 1 mês";
 }
 
 export const maskPhone = (t: string) => `(${t.slice(0, 2)}) ${t.slice(2, 3)}••••-${t.slice(-4)}`;

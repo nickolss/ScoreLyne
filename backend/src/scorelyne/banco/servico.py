@@ -7,21 +7,25 @@ from __future__ import annotations
 
 import uuid
 
-import httpx
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from scorelyne.operadora.models import DadosLinha
+from scorelyne.comum.analise import analisar_com_tratamento
+from scorelyne.comum.auth import hash_senha, senha_confere
+from scorelyne.comum.contratos import TrocaDeSenha
+from scorelyne.comum.erros import ErroApi
+from scorelyne.comum.operadora import Operadora
 from scorelyne.score import politica
-from scorelyne.score.analise import EscoposObrigatoriosAusentes, ResultadoAnalise, analisar
-from scorelyne.score.fatores import HistoricoInsuficiente
+from scorelyne.score.analise import ResultadoAnalise
 
-from .db import EventoDB, SolicitacaoDB, agora
+from .db import AnalistaDB, EventoDB, SolicitacaoDB, agora
 from .esquemas import (
     DecisaoAnalista,
     Evento,
+    LoginAnalista,
     NovaSolicitacao,
     RevisaoHumana,
+    SituacaoSolicitacao,
     Solicitacao,
     SolicitacaoResumo,
     Status,
@@ -35,46 +39,8 @@ ROTULO_DECISAO = {
 }
 
 
-class ErroBanco(Exception):
-    def __init__(self, status: int, mensagem: str):
-        super().__init__(mensagem)
-        self.status = status
-        self.mensagem = mensagem
-
-
-class Operadora:
-    """Cliente HTTP da operadora mock."""
-
-    def __init__(self, cliente: httpx.Client):
-        self.cliente = cliente
-
-    def _chamar(self, metodo: str, caminho: str, **kwargs) -> dict:
-        try:
-            r = self.cliente.request(metodo, caminho, **kwargs)
-        except httpx.HTTPError as exc:
-            raise ErroBanco(503, "Operadora indisponível no momento") from exc
-        if r.status_code >= 400:
-            raise ErroBanco(r.status_code, f"Operadora: {r.json().get('detail', 'erro')}")
-        return r.json()
-
-    def dados(self, telefone: str, consentimento_id: str) -> DadosLinha:
-        resposta = self._chamar(
-            "GET", f"/linhas/{telefone}/dados", headers={"X-Consentimento-Id": consentimento_id}
-        )
-        return DadosLinha.model_validate(resposta)
-
-    def consentimento(self, consentimento_id: str) -> dict:
-        return self._chamar("GET", f"/consentimentos/{consentimento_id}")
-
-    def revogar(self, consentimento_id: str) -> dict:
-        return self._chamar("DELETE", f"/consentimentos/{consentimento_id}")
-
-
-def analisar_com_tratamento(dados: DadosLinha, valor: float | None) -> ResultadoAnalise:
-    try:
-        return analisar(dados, valor)
-    except (EscoposObrigatoriosAusentes, HistoricoInsuficiente) as exc:
-        raise ErroBanco(422, str(exc)) from exc
+ErroBanco = ErroApi
+__all__ = ["ErroBanco", "Operadora", "analisar_com_tratamento"]
 
 
 def _evento(s: SolicitacaoDB, ator: str, tipo: str, titulo: str, detalhe: str | None = None) -> None:
@@ -127,6 +93,20 @@ def completa(s: SolicitacaoDB) -> Solicitacao:
         eventos=[
             Evento(em=e.em, ator=e.ator, tipo=e.tipo, titulo=e.titulo, detalhe=e.detalhe) for e in s.eventos
         ],
+    )
+
+
+def situacao(s: SolicitacaoDB) -> SituacaoSolicitacao:
+    c = completa(s)
+    return SituacaoSolicitacao(
+        id=c.id,
+        status=c.status,
+        decisao_agente=c.decisao_agente,
+        score=c.score,
+        oferta=c.analise.oferta if c.analise else None,
+        motivos_revisao=c.analise.motivos_revisao if c.analise else [],
+        revisao_humana=c.revisao_humana,
+        atualizado_em=c.atualizado_em,
     )
 
 
@@ -202,13 +182,13 @@ def listar(sessao: Session, status: Status | None = None) -> list[SolicitacaoDB]
     return [s for s in todas if status is None or _status(s) is status]
 
 
-def decidir(sessao: Session, solicitacao_id: str, decisao: DecisaoAnalista) -> SolicitacaoDB:
+def decidir(sessao: Session, solicitacao_id: str, decisao: DecisaoAnalista, analista: str) -> SolicitacaoDB:
     s = obter(sessao, solicitacao_id)
     if s.revogado_em:
         raise ErroBanco(409, "Consentimento revogado: a solicitação não pode mais ser decidida")
     s.decisao_final = Status.APROVADO.value if decisao.veredito is Veredito.APROVAR else Status.RECUSADO.value
     s.justificativa = decisao.justificativa
-    s.analista = decisao.analista
+    s.analista = analista
     s.decidido_em = agora()
     sobrepoe = s.decisao_agente != politica.Decisao.REVISAO and s.decisao_final != s.decisao_agente
     titulo = (
@@ -218,7 +198,7 @@ def decidir(sessao: Session, solicitacao_id: str, decisao: DecisaoAnalista) -> S
     )
     if sobrepoe:
         titulo += " (sobrepondo o agente)"
-    _evento(s, "analista", "decisao_analista", titulo, f"{decisao.analista}: “{decisao.justificativa}”")
+    _evento(s, "analista", "decisao_analista", titulo, f"{analista}: “{decisao.justificativa}”")
     sessao.commit()
     return s
 
@@ -238,7 +218,7 @@ def revogar(sessao: Session, operadora: Operadora, solicitacao_id: str) -> Solic
     s = obter(sessao, solicitacao_id)
     if s.revogado_em:
         return s
-    operadora.revogar(s.consentimento_id)
+    operadora.revogar_se_existir(s.consentimento_id)  # se a operadora o perdeu, o acesso já não existe
     s.revogado_em = agora()
     s.analise = None
     s.score = None
@@ -251,3 +231,34 @@ def revogar(sessao: Session, operadora: Operadora, solicitacao_id: str) -> Solic
     )
     sessao.commit()
     return s
+
+
+def criar_analista(sessao: Session, email: str, nome: str, senha: str) -> AnalistaDB:
+    a = AnalistaDB(id=str(uuid.uuid4()), email=email.lower(), nome=nome, senha_hash=hash_senha(senha))
+    sessao.add(a)
+    sessao.commit()
+    return a
+
+
+def autenticar_analista(sessao: Session, login: LoginAnalista) -> AnalistaDB:
+    a = sessao.scalar(select(AnalistaDB).where(AnalistaDB.email == login.email.lower()))
+    # Mesma resposta para e-mail desconhecido e senha errada.
+    if a is None or not senha_confere(login.senha, a.senha_hash):
+        raise ErroBanco(401, "E-mail ou senha incorretos")
+    return a
+
+
+def obter_analista(sessao: Session, analista_id: str) -> AnalistaDB:
+    a = sessao.get(AnalistaDB, analista_id)
+    if a is None:
+        raise ErroBanco(401, "Analista não encontrado")
+    return a
+
+
+def trocar_senha_analista(sessao: Session, a: AnalistaDB, dados: TrocaDeSenha) -> None:
+    if not senha_confere(dados.senha_atual, a.senha_hash):
+        raise ErroBanco(403, "A senha atual está incorreta")
+    if dados.nova_senha == dados.senha_atual:
+        raise ErroBanco(422, "A nova senha precisa ser diferente da atual")
+    a.senha_hash = hash_senha(dados.nova_senha)
+    sessao.commit()

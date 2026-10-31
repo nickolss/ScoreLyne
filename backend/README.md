@@ -1,12 +1,16 @@
 # ScoreLyne — Backend
 
-Dois serviços e um banco de dados:
+Três serviços e um banco de dados. O consumidor e o credor são módulos separados, cada um com
+login, segredo JWT e tabelas próprias: um token de um lado não vale no outro.
 
 - **Operadora mock** (`scorelyne.operadora`, porta 8001): base sintética de linhas telefônicas e
   uma API que só libera os dados de uma linha mediante consentimento do titular.
-- **Banco** (`scorelyne.banco`, porta 8002): recebe as solicitações de crédito, busca os dados
-  autorizados na operadora, roda o motor de score (`scorelyne.score`), guarda a decisão e a
-  trilha de auditoria no PostgreSQL e recebe a revisão humana.
+- **Consumidor** (`scorelyne.consumidor`, porta 8003): cadastro e login da pessoa, consentimento,
+  cálculo do próprio score, assistente com IA que explica a nota e o envio do pedido ao credor.
+- **Credor** (`scorelyne.banco`, porta 8002): login do analista, fila de solicitações, revisão
+  humana, cartão do modelo e copiloto do analista.
+- **Motor de score** (`scorelyne.score`) e peças compartilhadas (`scorelyne.comum`): o motor é uma
+  biblioteca sem dependência de API; `comum` guarda só o que cruza a fronteira entre os módulos.
 - **PostgreSQL** via `docker-compose.yml` na raiz do repositório.
 
 ## Rodando a demo completa
@@ -15,33 +19,115 @@ Dois serviços e um banco de dados:
 docker compose up -d                 # na raiz: PostgreSQL na porta 5432
 cd backend && uv sync
 uv run operadora servir              # terminal 1 · http://localhost:8001/docs
-uv run banco servir                  # terminal 2 · http://localhost:8002/docs
-uv run banco semear --limpar         # cria as solicitações das 5 personas
-cd ../frontend && npm run dev        # terminal 3 · http://localhost:3000
+uv run banco servir                  # terminal 2 · http://localhost:8002/docs  (credor)
+uv run consumidor servir             # terminal 3 · http://localhost:8003/docs
+uv run consumidor semear             # cadastra as 5 personas como consumidores (senha scorelyne123)
+uv run banco semear --limpar         # cria o analista (analista@scorelyne.demo) e 5 solicitações
+cd ../frontend && npm run dev        # terminal 4 · http://localhost:3000
 ```
 
-A operadora guarda os consentimentos em memória. Se ela reiniciar, rode `banco semear --limpar`
-de novo para as solicitações apontarem para consentimentos válidos.
+Se a porta 5432 já estiver ocupada por outro Postgres (o erro típico é `password authentication failed
+for user "scorelyne"`, porque você está falando com o banco de outro projeto), suba o do ScoreLyne em
+outra porta e aponte os módulos para ela. No PowerShell: `$env:BANCO_PORTA=5433; docker compose up -d`, e no
+`.env` da raiz `BANCO_DB_URL` e `CONSUMIDOR_DB_URL` com `localhost:5433`. Os comandos `servir` e `semear`
+leem esse `.env`.
 
-Outros comandos: `uv run banco orchestrate --url <túnel>` (gera agente e ferramentas do watsonx
-Orchestrate em `../orchestrate/`), `uv run score treinar` (retreina e grava `src/scorelyne/score/modelo.json`),
-`uv run operadora exportar` (CSVs da base sintética em `data/`), `uv run pytest`.
+Sem Docker, aponte os bancos para SQLite: `BANCO_DB_URL=sqlite:///credor.db` e
+`CONSUMIDOR_DB_URL=sqlite:///consumidor.db`.
+
+## Logins de demonstração
+
+Valem depois de rodar `uv run consumidor semear` e `uv run banco semear --limpar`. São dados de teste de pessoas
+fictícias, numa operadora simulada: não use essas senhas fora da demonstração.
+
+**Operador de crédito (analista)**, em http://localhost:3000/banco/entrar
+
+| E-mail | Senha |
+|---|---|
+| `analista@scorelyne.demo` | `scorelyne123` |
+
+**Consumidores**, em http://localhost:3000/cliente/entrar (o login é pelo CPF; a senha é a mesma para todos:
+`scorelyne123`). Na tela de login, clicar no nome da pessoa preenche CPF e senha.
+
+| Pessoa | CPF | Celular | Plano · tempo de linha | Score e decisão do agente |
+|---|---|---|---|---|
+| Maria Aparecida dos Santos | `424.026.771-47` | (11) 98712-4821 | pré-pago · 74 meses | 896 · pré-aprovada |
+| João Batista Ferreira | `520.201.915-71` | (81) 99653-7210 | controle · 38 meses | 862 · pré-aprovado |
+| Ana Clara Souza | `330.208.799-30` | (91) 98441-2093 | pré-pago · 14 meses | 473 · recusada, com plano de melhora |
+| Carlos Henrique Lima | `290.517.007-76` | (31) 99182-7746 | pós-pago · 112 meses | 416 · recusado, com plano de melhora |
+| Luciana Ferreira | `630.526.194-62` | (71) 98830-5518 | pré-pago · 5 meses | 601 · vai para um analista (histórico curto) |
+
+Sugestão para a apresentação: Maria para o caminho feliz, Luciana para ver o analista decidir um caso em revisão e
+Ana ou Carlos para ver a explicação de uma recusa.
+
+As notas são as que o modelo atual calcula (`score/modelo.json`) e mudam se o modelo for retreinado. Quem cria uma
+conta nova com outro CPF ou celular consegue entrar, mas só consegue calcular o score se a linha existir na
+operadora simulada. Para trocar a senha de teste, use a tela de Perfil, ou mude as constantes `SENHA_DEMO` e
+`ANALISTA_DEMO` em `consumidor/cli.py` e `banco/cli.py` antes de semear.
+
+As chaves entre os serviços (defina as mesmas nos dois lados em qualquer ambiente real):
+`CREDOR_SERVICE_KEY` (o consumidor cria e revoga solicitações no credor), `CREDOR_AGENT_KEY` (o
+agente do Orchestrate só lê e simula) e um segredo JWT por módulo, `CREDOR_JWT_SECRET` e
+`CONSUMIDOR_JWT_SECRET`. Sem segredo JWT, cada processo sorteia um e os logins caem ao reiniciar.
+
+A operadora guarda os consentimentos em memória. Se ela reiniciar, rode `consumidor semear` e
+`banco semear --limpar` de novo para tudo apontar para consentimentos válidos.
+
+Outros comandos: `uv run banco orchestrate --url <túnel>` e `uv run consumidor orchestrate` (geram os
+agentes do watsonx Orchestrate em `../orchestrate/`), `uv run score treinar` (retreina, grava
+`src/scorelyne/score/modelo.json` e uma cópia em `score/versoes/`), `uv run operadora exportar`
+(CSVs da base sintética em `data/`), `uv run pytest`.
 
 Variáveis: `OPERADORA_POPULACAO` (3000), `OPERADORA_SEMENTE` (42), `OPERADORA_DEMO` (1 liga
-`/demo/*`), `OPERADORA_URL` (onde o banco acha a operadora), `BANCO_DB_URL`
-(`postgresql+psycopg://scorelyne:scorelyne@localhost:5432/scorelyne`), `OPERADORA_CORS` e
-`BANCO_CORS` (`http://localhost:3000`). No frontend: `NEXT_PUBLIC_OPERADORA_URL` e
-`NEXT_PUBLIC_BANCO_URL`.
+`/demo/*`), `OPERADORA_URL` (onde os módulos acham a operadora), `CREDOR_URL` (onde o consumidor
+acha o credor), `BANCO_DB_URL` e `CONSUMIDOR_DB_URL`
+(`postgresql+psycopg://scorelyne:scorelyne@localhost:5432/scorelyne`), `OPERADORA_CORS`,
+`BANCO_CORS` e `CONSUMIDOR_CORS` (`http://localhost:3000`). IA: `WATSONX_APIKEY`,
+`WATSONX_PROJECT_ID`, `ORCHESTRATE_URL`, `ORCHESTRATE_AGENT_ID` (analista) e
+`ORCHESTRATE_CONSUMIDOR_AGENT_ID` (consumidor). O frontend chama os módulos pelo próprio servidor
+Next, com o token num cookie httpOnly: `CONSUMIDOR_URL`, `CREDOR_URL` e `OPERADORA_URL` (padrões nas
+portas acima), sem variáveis `NEXT_PUBLIC_*`.
 
-## API do banco
+## API do consumidor
 
 ```
-POST   /solicitacoes                    { nome, telefone, consentimento_id, valor_solicitado, finalidade, ... }
+POST   /cadastro                        { nome, cpf, telefone, senha (mín. 8), ocupacao, cidade, uf }
+POST   /login                           { cpf, senha } -> token (papel consumidor, 60 min)
+GET    /me                              dados da própria pessoa
+PATCH  /meus-dados                      corrige telefone, ocupação, cidade, uf (trocar o telefone revoga tudo)
+POST   /consentimentos                  { escopos } autoriza a ScoreLyne a ler a operadora
+GET    /meus-consentimentos             consentimentos ativos com cada leitura dos dados registrada pela operadora
+POST   /meu-score                       { valor_solicitado, finalidade } calcula e guarda
+GET    /meu-score                       nota, fatores, pontos fortes e de atenção, plano de melhora
+POST   /enviar-ao-credor                dá ao credor um consentimento só dele e envia o pedido
+GET    /minha-solicitacao               situação: decisão, justificativa do analista, oferta
+GET    /meus-pedidos                    histórico dos pedidos ao credor (inclui os retirados e o motivo)
+POST   /retirar-do-credor               desfaz só o envio (o score continua)
+POST   /revogar                         revoga tudo e apaga o score guardado
+POST   /minha-conta/senha              { senha_atual, nova_senha }
+POST   /minha-conta/excluir            { senha } revoga tudo e apaga cadastro, score e histórico (LGPD)
+GET    /assistente · POST /assistente   chat com a IA sobre a própria nota (só enxerga os dados de quem está logado)
+GET    /formulas · GET /modelo          públicos: registro versionado das fórmulas e cartão do modelo
+```
+
+O assistente nunca recebe identificador de cliente: as ferramentas rodam no servidor sobre o cliente
+do token (watsonx.ai), ou o servidor injeta só a análise da própria pessoa na conversa (Orchestrate).
+
+## API do credor
+
+Tudo exige login de analista, a chave de agente (só leitura e simulação) ou a chave de serviço.
+`/saude`, `/login`, `/modelo` e `/formulas` são públicos.
+
+```
+POST   /login                           { email, senha } -> token do analista
+GET    /eu · POST /minha-conta/senha    perfil do analista e troca de senha
+POST   /solicitacoes                    (chave de serviço) { nome, telefone, consentimento_id, valor_solicitado, finalidade, ... }
 GET    /solicitacoes[?status=revisao]   fila
 GET    /solicitacoes/{id}               análise completa + trilha de auditoria
-POST   /solicitacoes/{id}/decisao       { veredito: aprovar|recusar, justificativa (mín. 10) }
+POST   /solicitacoes/{id}/decisao       { veredito: aprovar|recusar, justificativa (mín. 10) }; quem decidiu vem do login
 DELETE /solicitacoes/{id}/decisao       desfaz a decisão do analista
-POST   /solicitacoes/{id}/revogar       revoga na operadora e apaga score e análise
+GET    /solicitacoes/{id}/situacao      (chave de serviço) o que o consumidor pode ver do próprio pedido
+POST   /solicitacoes/{id}/revogar       (chave de serviço) revoga na operadora e apaga score e análise
 POST   /analises                        análise avulsa, sem registrar (ferramenta do agente)
 GET    /modelo                          cartão do modelo: importâncias, métricas, equidade,
                                         perda máxima de pontos ao omitir cada fator

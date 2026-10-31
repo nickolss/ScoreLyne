@@ -3,25 +3,13 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import StrEnum
 from typing import Annotated
 
 from pydantic import BaseModel, Field
 
+from scorelyne.comum.contratos import RevisaoHumana, SituacaoSolicitacao, Status, Veredito
 from scorelyne.score.analise import ResultadoAnalise
 from scorelyne.score.politica import Decisao
-
-
-class Status(StrEnum):
-    APROVADO = "aprovado"
-    REVISAO = "revisao"
-    RECUSADO = "recusado"
-    REVOGADO = "revogado"
-
-
-class Veredito(StrEnum):
-    APROVAR = "aprovar"
-    RECUSAR = "recusar"
 
 
 class NovaSolicitacao(BaseModel):
@@ -35,10 +23,30 @@ class NovaSolicitacao(BaseModel):
     uf: str | None = Field(default=None, pattern=r"^[A-Z]{2}$")
 
 
+__all__ = ["RevisaoHumana", "SituacaoSolicitacao", "Status", "Veredito"]
+
+
+class LoginAnalista(BaseModel):
+    email: str = Field(min_length=5, max_length=120)
+    senha: str
+
+
+class SessaoAnalista(BaseModel):
+    token: str
+    tipo: str = "bearer"
+    nome: str
+
+
+class AnalistaPerfil(BaseModel):
+    nome: str
+    email: str
+
+
 class DecisaoAnalista(BaseModel):
+    """Veredito e justificativa. Quem decidiu vem do login, nunca do corpo da requisição."""
+
     veredito: Veredito
     justificativa: str = Field(min_length=10, max_length=2000)
-    analista: str = Field(default="Analista de crédito", min_length=2, max_length=120)
 
 
 class Evento(BaseModel):
@@ -47,13 +55,6 @@ class Evento(BaseModel):
     tipo: str
     titulo: str
     detalhe: str | None
-
-
-class RevisaoHumana(BaseModel):
-    veredito: Veredito
-    justificativa: str
-    analista: str
-    em: datetime
 
 
 class SolicitacaoResumo(BaseModel):

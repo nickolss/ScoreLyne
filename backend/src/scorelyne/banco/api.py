@@ -1,28 +1,47 @@
-"""API do banco (porta 8002): solicitações, revisão humana, análise avulsa e cartão do modelo."""
+"""API do credor (porta 8002): fila de solicitações, revisão humana, análise avulsa e cartão do modelo.
 
-from __future__ import annotations
+Três tipos de credencial, nenhuma anônima (só /saude, /login e /modelo são públicos):
+- analista (JWT do /login): decide, desfaz e usa o copiloto;
+- agente (cabeçalho X-Agent-Key): só leitura e simulação, para o watsonx Orchestrate via túnel;
+- serviço (cabeçalho X-Service-Key): o módulo do consumidor cria e revoga solicitações.
+"""
 
+# Sem `from __future__ import annotations`: o FastAPI precisa resolver os tipos definidos em create_app.
 import os
 from collections.abc import Iterator
 from typing import Annotated
 
 import httpx
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Header, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from scorelyne.operadora.models import DadosLinha, Escopo
-from scorelyne.score import politica
+from scorelyne.comum.auth import Autenticador, bearer, chave_valida
+from scorelyne.comum.cartao import CartaoModelo, cartao_modelo
+from scorelyne.comum.contratos import TrocaDeSenha
+from scorelyne.comum.erros import ErroApi
+from scorelyne.comum.operadora import Operadora
+from scorelyne.operadora.models import DadosLinha
 from scorelyne.score.analise import ResultadoAnalise
-from scorelyne.score.fatores import ROTULOS
-from scorelyne.score.modelo import Escala, carregar_modelo
+from scorelyne.score.formulas import RegistroFormulas, carregar_formulas
+from scorelyne.score.modelo import carregar_modelo
 
 from . import agente, copiloto, servico
-from .db import criar_sessoes
-from .esquemas import DecisaoAnalista, NovaSolicitacao, Solicitacao, SolicitacaoResumo, Status
-from .servico import ErroBanco, Operadora
+from .db import AnalistaDB, criar_sessoes
+from .esquemas import (
+    AnalistaPerfil,
+    DecisaoAnalista,
+    LoginAnalista,
+    NovaSolicitacao,
+    SessaoAnalista,
+    SituacaoSolicitacao,
+    Solicitacao,
+    SolicitacaoResumo,
+    Status,
+)
 
 
 class PedidoAnalise(BaseModel):
@@ -34,50 +53,6 @@ class PedidoAnalise(BaseModel):
 class PedidoAnaliseDados(BaseModel):
     dados: DadosLinha
     valor_solicitado: Annotated[float | None, Field(gt=0)] = None
-
-
-class FatorModelo(BaseModel):
-    chave: Escopo
-    rotulo: str
-    importancia: float
-    obrigatorio: bool
-    ativo: bool
-    perda_maxima_se_omitir: int  # pontos que o score pode cair se o titular não autorizar
-
-
-class CartaoModelo(BaseModel):
-    """Resumo público do modelo, para a página de governança e para auditoria."""
-
-    versao: str
-    fatores: list[FatorModelo]
-    limiares: dict[str, int]
-    escala: Escala
-    metricas: dict[str, float]
-    equidade: dict
-
-
-def cartao_modelo() -> CartaoModelo:
-    m = carregar_modelo()
-    return CartaoModelo(
-        versao=m.versao,
-        fatores=[
-            FatorModelo(
-                chave=k,
-                rotulo=ROTULOS[k],
-                importancia=m.importancia[k],
-                obrigatorio=k in politica.ESCOPOS_OBRIGATORIOS,
-                ativo=m.coeficientes[k] != 0,
-                perda_maxima_se_omitir=round(
-                    m.escala.fator * abs(m.coeficientes[k]) * (100 - m.conservador[k]) / 100
-                ),
-            )
-            for k in ROTULOS
-        ],
-        limiares={"aprovacao": politica.LIMIAR_APROVACAO, "revisao": politica.LIMIAR_REVISAO},
-        escala=m.escala,
-        metricas=m.metricas,
-        equidade=m.equidade,
-    )
 
 
 def _sessao(request: Request) -> Iterator[Session]:
@@ -93,8 +68,14 @@ def create_app(
     operadora_url: str | None = None,
     transporte: httpx.BaseTransport | None = None,
     assistente: copiloto.Provedor | None = None,
+    segredo: str | None = None,
+    chave_servico: str | None = None,
+    chave_agente: str | None = None,
 ) -> FastAPI:
     sessoes = criar_sessoes(db_url)
+    auth = Autenticador("analista", segredo or os.getenv("CREDOR_JWT_SECRET"))
+    chave_servico = chave_servico or os.getenv("CREDOR_SERVICE_KEY")
+    chave_agente = chave_agente or os.getenv("CREDOR_AGENT_KEY")
     operadora = Operadora(
         httpx.Client(
             base_url=operadora_url or os.getenv("OPERADORA_URL", "http://localhost:8001"),
@@ -104,11 +85,12 @@ def create_app(
     )
 
     app = FastAPI(
-        title="Banco — ScoreLyne",
+        title="Credor — ScoreLyne",
         version="0.2.0",
         description="Solicitações de crédito com score explicável a partir de dados telecom autorizados.",
     )
     app.state.sessoes = sessoes
+    app.state.auth = auth
     assistente = assistente or copiloto.do_ambiente()
     app.add_middleware(
         CORSMiddleware,
@@ -117,58 +99,121 @@ def create_app(
         allow_headers=["*"],
     )
 
-    @app.exception_handler(ErroBanco)
-    def _erro(_: Request, exc: ErroBanco):
+    @app.exception_handler(ErroApi)
+    def _erro(_: Request, exc: ErroApi):
         return JSONResponse(status_code=exc.status, content={"detail": exc.mensagem})
+
+    def analista_logado(s: Sessao, sujeito: Annotated[str, Depends(auth.sujeito)]) -> AnalistaDB:
+        return servico.obter_analista(s, sujeito)
+
+    Analista = Annotated[AnalistaDB, Depends(analista_logado)]
+
+    def leitura(
+        credencial: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
+        x_agent_key: Annotated[str | None, Header()] = None,
+    ) -> str:
+        """Analista logado ou agente do Orchestrate, para as rotas que só leem ou simulam."""
+        if chave_valida(x_agent_key, chave_agente):
+            return "agente"
+        return auth.sujeito(credencial)
+
+    def interno(x_service_key: Annotated[str | None, Header()] = None) -> None:
+        if not chave_valida(x_service_key, chave_servico):
+            raise ErroApi(403, "Chave de serviço ausente ou inválida")
+
+    Leitura = Depends(leitura)
+    Interno = Depends(interno)
 
     @app.get("/saude", tags=["infra"])
     def saude():
         return {"status": "ok", "modelo": carregar_modelo().versao}
 
+    @app.post("/login", response_model=SessaoAnalista, tags=["analista"])
+    def login(dados: LoginAnalista, s: Sessao):
+        a = servico.autenticar_analista(s, dados)
+        return SessaoAnalista(token=auth.criar_token(a.id), nome=a.nome)
+
+    @app.get("/eu", response_model=AnalistaPerfil, tags=["analista"])
+    def eu(a: Analista):
+        return AnalistaPerfil(nome=a.nome, email=a.email)
+
+    @app.post("/minha-conta/senha", tags=["analista"])
+    def trocar_senha(dados: TrocaDeSenha, a: Analista, s: Sessao):
+        servico.trocar_senha_analista(s, a, dados)
+        return {"alterada": True}
+
     # --- Solicitações ----------------------------------------------------------
 
-    @app.post("/solicitacoes", status_code=201, response_model=Solicitacao, tags=["solicitacoes"])
+    @app.post(
+        "/solicitacoes",
+        status_code=201,
+        response_model=Solicitacao,
+        tags=["solicitacoes"],
+        dependencies=[Interno],
+    )
     def criar_solicitacao(pedido: NovaSolicitacao, s: Sessao):
         """Busca os dados autorizados na operadora, roda o agente de score e registra o pedido."""
         return servico.completa(servico.criar(s, operadora, pedido))
 
-    @app.get("/solicitacoes", response_model=list[SolicitacaoResumo], tags=["solicitacoes"])
+    @app.get(
+        "/solicitacoes", response_model=list[SolicitacaoResumo], tags=["solicitacoes"], dependencies=[Leitura]
+    )
     def listar_solicitacoes(s: Sessao, status: Annotated[Status | None, Query()] = None):
         return [servico.resumo(x) for x in servico.listar(s, status)]
 
-    @app.get("/solicitacoes/{solicitacao_id}", response_model=Solicitacao, tags=["solicitacoes"])
+    @app.get(
+        "/solicitacoes/{solicitacao_id}",
+        response_model=Solicitacao,
+        tags=["solicitacoes"],
+        dependencies=[Leitura],
+    )
     def obter_solicitacao(solicitacao_id: str, s: Sessao):
         return servico.completa(servico.obter(s, solicitacao_id))
 
+    @app.get(
+        "/solicitacoes/{solicitacao_id}/situacao",
+        response_model=SituacaoSolicitacao,
+        tags=["solicitacoes"],
+        dependencies=[Interno],
+    )
+    def situacao(solicitacao_id: str, s: Sessao):
+        """Visão da solicitação para o próprio consumidor, pedida pelo módulo do consumidor."""
+        return servico.situacao(servico.obter(s, solicitacao_id))
+
     @app.post("/solicitacoes/{solicitacao_id}/decisao", response_model=Solicitacao, tags=["revisao humana"])
-    def decidir(solicitacao_id: str, decisao: DecisaoAnalista, s: Sessao):
-        """Decisão do analista. Vale para a faixa de revisão e para sobrepor o agente."""
-        return servico.completa(servico.decidir(s, solicitacao_id, decisao))
+    def decidir(solicitacao_id: str, decisao: DecisaoAnalista, a: Analista, s: Sessao):
+        """Decisão do analista logado. Vale para a faixa de revisão e para sobrepor o agente."""
+        return servico.completa(servico.decidir(s, solicitacao_id, decisao, a.nome))
 
     @app.delete("/solicitacoes/{solicitacao_id}/decisao", response_model=Solicitacao, tags=["revisao humana"])
-    def desfazer(solicitacao_id: str, s: Sessao):
+    def desfazer(solicitacao_id: str, _: Analista, s: Sessao):
         return servico.completa(servico.desfazer(s, solicitacao_id))
 
-    @app.post("/solicitacoes/{solicitacao_id}/revogar", response_model=Solicitacao, tags=["solicitacoes"])
+    @app.post(
+        "/solicitacoes/{solicitacao_id}/revogar",
+        response_model=Solicitacao,
+        tags=["solicitacoes"],
+        dependencies=[Interno],
+    )
     def revogar(solicitacao_id: str, s: Sessao):
-        """O cliente revoga o consentimento: a operadora bloqueia o acesso e a análise é apagada."""
+        """O módulo do consumidor repassa a revogação: a operadora bloqueia o acesso e a análise é apagada."""
         return servico.completa(servico.revogar(s, operadora, solicitacao_id))
 
     # --- Análise avulsa (ferramenta do agente) ---------------------------------
 
-    @app.post("/analises", response_model=ResultadoAnalise, tags=["analise"])
+    @app.post("/analises", response_model=ResultadoAnalise, tags=["analise"], dependencies=[Leitura])
     def analisar_por_consentimento(pedido: PedidoAnalise):
         """Calcula score, decisão e explicação sem registrar solicitação."""
         dados = operadora.dados(pedido.telefone, pedido.consentimento_id)
         return servico.analisar_com_tratamento(dados, pedido.valor_solicitado)
 
-    @app.post("/analises/dados", response_model=ResultadoAnalise, tags=["analise"])
+    @app.post("/analises/dados", response_model=ResultadoAnalise, tags=["analise"], dependencies=[Leitura])
     def analisar_dados(pedido: PedidoAnaliseDados):
         return servico.analisar_com_tratamento(pedido.dados, pedido.valor_solicitado)
 
     # --- Copiloto do analista (watsonx Orchestrate ou watsonx.ai) -------------
 
-    @app.get("/copiloto", tags=["copiloto"])
+    @app.get("/copiloto", tags=["copiloto"], dependencies=[Depends(analista_logado)])
     def copiloto_status():
         perguntas = [p for _, _, p in agente.PERGUNTAS_INICIAIS]
         if assistente is None:
@@ -180,11 +225,16 @@ def create_app(
             "perguntas": perguntas,
         }
 
-    @app.post("/copiloto", response_model=copiloto.RespostaCopiloto, tags=["copiloto"])
+    @app.post(
+        "/copiloto",
+        response_model=copiloto.RespostaCopiloto,
+        tags=["copiloto"],
+        dependencies=[Depends(analista_logado)],
+    )
     def conversar(pedido: copiloto.PedidoCopiloto, s: Sessao):
         """Responde ao analista com o agente do watsonx Orchestrate ou um modelo do watsonx.ai."""
         if assistente is None:
-            raise ErroBanco(
+            raise ErroApi(
                 503, "Copiloto desligado: configure WATSONX_APIKEY e ORCHESTRATE_* ou WATSONX_PROJECT_ID."
             )
         return assistente.responder(pedido, s, operadora)
@@ -192,5 +242,10 @@ def create_app(
     @app.get("/modelo", response_model=CartaoModelo, tags=["governanca"])
     def modelo():
         return cartao_modelo()
+
+    @app.get("/formulas", response_model=RegistroFormulas, tags=["governanca"])
+    def formulas():
+        """Registro versionado das fórmulas de cálculo do score."""
+        return carregar_formulas()
 
     return app

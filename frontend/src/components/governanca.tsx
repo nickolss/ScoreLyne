@@ -1,28 +1,31 @@
-import type { Metadata } from "next";
-import { ApiError, banco, type CartaoModelo } from "@/lib/api";
+import { ApiError, type CartaoModelo, type RegistroFormulas } from "@/lib/api";
+import { consumidorPublico, credorPublico } from "@/lib/api-servidor";
 import { EXCLUDED_DATA, PLAN_LABEL, THRESHOLDS, pct } from "@/lib/data";
 
-export const metadata: Metadata = { title: "Governança" };
-
-// Pesos, métricas e equidade vêm do modelo em produção (GET /modelo).
-export const dynamic = "force-dynamic";
+// Conteúdo da página de governança. Aparece em três lugares, cada um com o menu da sua persona:
+// /governanca (público), /banco/governanca (operador de crédito) e /cliente/como-e-calculado (consumidor).
+// Pesos, métricas, equidade e fórmulas vêm do que está em produção (GET /modelo e GET /formulas).
 
 const PRINCIPLES = [
   {
     title: "Equidade e antibias",
-    body: "O modelo só consome fatores de comportamento de uso. A cada treino, as taxas de aprovação são medidas por região e por tipo de plano (regra dos 4/5), junto com a inadimplência dos aprovados de cada grupo.",
+    body: "O modelo só consome fatores de comportamento de uso. A cada treino, as taxas de aprovação são medidas por região e por tipo de plano (regra dos 4/5), junto com a inadimplência dos aprovados e a calibração da probabilidade de cada grupo.",
   },
   {
     title: "Transparência e explicabilidade",
-    body: "Todo score vem com os pontos de cada fator, que somados à base dão exatamente o score. Quem é aprovado entende o porquê; quem é recusado recebe o que fazer para melhorar.",
+    body: "Todo score vem com os pontos de cada fator, que somados à base dão exatamente o score. As fórmulas de cálculo ficam registradas, com versão, e abertas a qualquer pessoa. Quem é aprovado entende o porquê; quem é recusado recebe o que fazer para melhorar.",
   },
   {
     title: "Privacidade (LGPD)",
-    body: "Consentimento explícito, granular e revogável antes de qualquer uso. O banco recebe só os blocos autorizados, com valores agregados por mês. Fator opcional não autorizado entra com o pior valor: esconder dados nunca aumenta o score. Revogar apaga a análise.",
+    body: "Consentimento explícito, granular e revogável antes de qualquer uso. O credor recebe só os blocos autorizados, com valores agregados por mês, e o consumidor dá a ele um consentimento próprio. Fator opcional não autorizado entra com o pior valor: esconder dados nunca aumenta o score. Revogar apaga a análise.",
   },
   {
     title: "Supervisão humana",
-    body: `Scores entre ${THRESHOLDS.review} e ${THRESHOLDS.approve}, linhas com menos de 6 meses ou com poucos fatores sempre passam por um analista. Qualquer decisão automática pode ser sobreposta, com justificativa registrada na trilha de auditoria.`,
+    body: `Scores entre ${THRESHOLDS.review} e ${THRESHOLDS.approve}, linhas com menos de 6 meses ou com poucos fatores sempre passam por um analista. Qualquer decisão automática pode ser sobreposta, com justificativa registrada na trilha de auditoria. O consumidor pode pedir revisão humana.`,
+  },
+  {
+    title: "Separação entre consumidor e credor",
+    body: "São dois serviços, com bancos e logins próprios. O consumidor só acessa os próprios dados; o credor só vê o pedido que a pessoa decidiu enviar. Um token de um lado não vale no outro.",
   },
   {
     title: "Conformidade",
@@ -32,11 +35,16 @@ const PRINCIPLES = [
 
 const GROUP_LABEL: Record<string, string> = { regiao: "Região", plano: "Tipo de plano" };
 
-export default async function GovernancaPage() {
+const virgula = (n: number, casas = 2) => n.toFixed(casas).replace(".", ",");
+
+export async function Governanca({ origem = "credor" }: { origem?: "credor" | "consumidor" }) {
+  // Cada módulo lê do próprio serviço: o consumidor nunca precisa falar com o credor.
+  const fonte = origem === "consumidor" ? consumidorPublico : credorPublico;
   let modelo: CartaoModelo | null = null;
+  let formulas: RegistroFormulas | null = null;
   let error: string | null = null;
   try {
-    modelo = await banco.modelo();
+    [modelo, formulas] = await Promise.all([fonte.modelo(), fonte.formulas()]);
   } catch (e) {
     error = e instanceof ApiError ? e.message : "Erro ao carregar o modelo.";
   }
@@ -66,6 +74,7 @@ export default async function GovernancaPage() {
             ))}
           </ol>
 
+          {formulas && <Formulas registro={formulas} />}
           {modelo && <Fairness modelo={modelo} />}
         </div>
 
@@ -106,8 +115,8 @@ export default async function GovernancaPage() {
                 <h2 className="px-5 py-3 border-b border-ink bg-tint font-bold">Desempenho no teste</h2>
                 <dl className="px-5 py-2 text-sm">
                   {[
-                    ["AUC", modelo.metricas.auc.toFixed(2).replace(".", ",")],
-                    ["KS", modelo.metricas.ks.toFixed(2).replace(".", ",")],
+                    ["AUC", virgula(modelo.metricas.auc)],
+                    ["KS", virgula(modelo.metricas.ks)],
                     ["Aprovação automática", pct(modelo.metricas.taxa_aprovacao_automatica)],
                     ["Inadimplência dos aprovados", pct(modelo.metricas.inadimplencia_aprovados, 1)],
                     ["Vai para analista", pct(modelo.metricas.taxa_revisao)],
@@ -144,34 +153,107 @@ export default async function GovernancaPage() {
   );
 }
 
+function Formulas({ registro }: { registro: RegistroFormulas }) {
+  const { modelo, politica } = registro;
+  return (
+    <section id="formulas" className="scroll-mt-20">
+      <h2 className="display text-3xl">Fórmulas de cálculo.</h2>
+      <p className="mt-3 text-ink-2 leading-relaxed max-w-[62ch]">
+        Cada fator vai de 0 a 100. O modelo transforma os fatores em pontos e o resultado vira a decisão.
+        Toda análise guarda a versão do registro com que foi calculada.
+      </p>
+      <p className="mt-2 label text-ink-2">
+        Registro v{registro.versao} · atualizado em {new Date(`${registro.atualizado_em}T12:00:00`).toLocaleDateString("pt-BR")}
+      </p>
+
+      <ol className="mt-6 border-t-2 border-ink">
+        {registro.fatores.map((f) => (
+          <li key={f.id} className="py-5 border-b border-rule">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <h3 className="font-bold text-lg">{f.rotulo}</h3>
+              <span className="label text-ink-2">v{f.versao}</span>
+            </div>
+            <p className="num mt-2 bg-tint px-3 py-2 text-sm leading-relaxed">{f.formula}</p>
+            <p className="mt-2 text-sm text-ink-2">
+              <span className="font-semibold text-ink">Entradas:</span> {f.entradas.join(", ")}.
+            </p>
+            <p className="mt-1 text-sm text-ink-2">{f.observacao}</p>
+          </li>
+        ))}
+      </ol>
+
+      <div className="mt-8 border border-ink">
+        <h3 className="px-5 py-3 border-b border-ink bg-tint font-bold">
+          Do fator ao score <span className="label text-ink-2 ml-2">v{modelo.versao}</span>
+        </h3>
+        <ul className="p-5 space-y-3 text-sm">
+          {[modelo.formula_pontos_fator, modelo.formula_score, modelo.formula_escala, modelo.formula_probabilidade].map((t) => (
+            <li key={t} className="num bg-tint px-3 py-2 leading-relaxed">
+              {t}
+            </li>
+          ))}
+        </ul>
+        <p className="px-5 pb-5 text-sm text-ink-2">{modelo.observacao}</p>
+      </div>
+
+      <div className="mt-8 border border-ink">
+        <h3 className="px-5 py-3 border-b border-ink bg-tint font-bold">
+          Da nota à decisão e à oferta <span className="label text-ink-2 ml-2">v{politica.versao}</span>
+        </h3>
+        <ul className="p-5 space-y-3 text-sm">
+          {Object.entries(politica.formulas).map(([nome, formula]) => (
+            <li key={nome}>
+              <span className="label text-ink-2">{nome.replaceAll("_", " ")}</span>
+              <span className="num block bg-tint px-3 py-2 mt-1 leading-relaxed">{formula}</span>
+            </li>
+          ))}
+        </ul>
+        <ul className="px-5 pb-5 space-y-1 text-sm text-ink-2 list-disc list-inside">
+          {politica.regras_de_supervisao.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 function Fairness({ modelo }: { modelo: CartaoModelo }) {
   return (
     <section>
       <h2 className="display text-3xl">Monitor de equidade.</h2>
       <p className="mt-3 text-ink-2 leading-relaxed max-w-[62ch]">
         Aprovação automática por grupo. A regra dos 4/5 pede que o grupo com menor aprovação tenha pelo
-        menos 80% da taxa do maior. Inadimplência parecida entre os aprovados mostra que o mesmo padrão
-        de risco vale para todos.
+        menos 80% da taxa do maior. A calibração confere se a probabilidade de inadimplência que o modelo
+        prevê para cada grupo bate com a que de fato aconteceu: se bate, o modelo não erra contra ninguém.
       </p>
       <div className="mt-6 space-y-8">
         {Object.entries(modelo.equidade).map(([dim, r]) => (
           <div key={dim} className="border border-ink">
             <div className="px-5 py-3 border-b border-ink flex flex-wrap items-center justify-between gap-2">
               <h3 className="font-bold">{GROUP_LABEL[dim] ?? dim}</h3>
-              <span
-                className={`label border px-2 py-0.5 ${r.passa_regra_4_5 ? "bg-lime border-ink" : "bg-red text-paper border-red"}`}
-              >
-                Razão {r.razao_impacto?.toFixed(2).replace(".", ",") ?? "—"} ·{" "}
-                {r.passa_regra_4_5 ? "dentro da regra" : "atenção"}
-              </span>
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`label border px-2 py-0.5 ${r.passa_regra_4_5 ? "bg-lime border-ink" : "bg-red text-paper border-red"}`}
+                >
+                  Razão {r.razao_impacto === null ? "—" : virgula(r.razao_impacto)} ·{" "}
+                  {r.passa_regra_4_5 ? "dentro da regra" : "atenção"}
+                </span>
+                <span
+                  className={`label border px-2 py-0.5 ${r.calibrado_em_todos_os_grupos ? "bg-lime border-ink" : "bg-red text-paper border-red"}`}
+                >
+                  {r.calibrado_em_todos_os_grupos ? "calibrado" : "descalibrado"}
+                </span>
+              </div>
             </div>
             <div className="overflow-x-auto">
-              <table className="w-full text-sm min-w-[28rem]">
+              <table className="w-full text-sm min-w-[34rem]">
                 <thead className="text-left">
                   <tr className="border-b border-rule">
                     <th className="label font-normal px-5 py-2">Grupo</th>
                     <th className="label font-normal px-5 py-2 text-right">Aprovação</th>
                     <th className="label font-normal px-5 py-2 text-right">Inad. dos aprovados</th>
+                    <th className="label font-normal px-5 py-2 text-right">Prevista × real</th>
                     <th className="label font-normal px-5 py-2 text-right">Linhas</th>
                   </tr>
                 </thead>
@@ -190,6 +272,9 @@ function Fairness({ modelo }: { modelo: CartaoModelo }) {
                       <td className="px-5 py-2 text-right num">
                         {t.inadimplencia_aprovados === null ? "—" : pct(t.inadimplencia_aprovados, 1)}
                       </td>
+                      <td className="px-5 py-2 text-right num whitespace-nowrap">
+                        {pct(t.pd_prevista, 1)} × {pct(t.inadimplencia_real, 1)}
+                      </td>
                       <td className="px-5 py-2 text-right num text-ink-2">{t.n}</td>
                     </tr>
                   ))}
@@ -198,10 +283,11 @@ function Fairness({ modelo }: { modelo: CartaoModelo }) {
             </div>
             {dim === "plano" && !r.passa_regra_4_5 && (
               <p className="px-5 py-3 border-t border-rule text-sm text-ink-2">
-                Ponto em aberto: o pré-pago tem menos informação por mês (recargas em vez de datas de
-                pagamento de fatura), então o modelo separa menos os bons pagadores desse grupo. A
-                inadimplência entre os aprovados é a mesma. Em estudo: limiares por segmento ou sinais mais
-                ricos para o pré-pago.
+                Ponto em aberto: o pré-pago é aprovado automaticamente com menos frequência.{" "}
+                {r.calibrado_em_todos_os_grupos
+                  ? `O modelo está calibrado em todos os planos (erro máximo de ${pct(r.erro_calibracao_maximo ?? 0, 1)}), então a diferença não vem de um erro contra o pré-pago: vem de risco e de informação diferentes entre os planos. Só o pré-pago tem o fator de recargas, e a inadimplência entre os aprovados é a mesma.`
+                  : "A calibração também está fora da margem: o modelo precisa de revisão."}{" "}
+                Se a regra dos 4/5 deve prevalecer sobre a calibração é uma decisão de produto, ainda em aberto.
               </p>
             )}
           </div>

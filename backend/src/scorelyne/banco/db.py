@@ -20,6 +20,15 @@ class Base(DeclarativeBase):
     pass
 
 
+class AnalistaDB(Base):
+    __tablename__ = "analistas"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(120), unique=True)
+    nome: Mapped[str] = mapped_column(String(120))
+    senha_hash: Mapped[str] = mapped_column(String(200))
+
+
 class SolicitacaoDB(Base):
     __tablename__ = "solicitacoes"
 

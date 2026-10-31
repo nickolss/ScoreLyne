@@ -1,0 +1,107 @@
+# Registro das fórmulas de cálculo do score. Fonte única da documentação pública (/formulas).
+# Regra: mudou uma fórmula em fatores.py, modelo.py ou politica.py? Atualize o texto, os
+# parâmetros e a versão aqui. tests/test_formulas.py falha se os parâmetros divergirem do código.
+#
+# Versionamento: MAIOR muda o resultado de forma incompatível, MENOR ajusta um parâmetro,
+# PATCH só reescreve o texto.
+versao: "1.0.0"
+atualizado_em: "2026-10-20"
+
+fatores:
+  - id: recargas
+    rotulo: Regularidade de recargas
+    versao: "1.0.0"
+    formula: "100 × (meses com ao menos uma recarga ÷ meses em plano pré-pago na janela)"
+    entradas: [datas das recargas, plano de cada mês]
+    parametros:
+      janela_meses: 24
+      dica_abaixo_de: 90
+    observacao: Só conta meses em plano pré-pago. Em plano com fatura o fator não se aplica.
+
+  - id: permanencia
+    rotulo: Tempo de permanência na base
+    versao: "1.0.0"
+    formula: "100 × mínimo(1, ln(1 + meses na base) ÷ ln(1 + 120))"
+    entradas: [meses na mesma operadora]
+    parametros:
+      meses_de_referencia: 120
+      dica_abaixo_de: 60
+    observacao: Cresce rápido nos primeiros anos e satura em 10 anos de relacionamento.
+
+  - id: pontualidade
+    rotulo: Pontualidade de pagamento
+    versao: "1.0.0"
+    formula: "limitar_0_100(100 × média(notas) − 10 × suspensões por atraso)"
+    entradas: [faturas e data de pagamento, meses com saldo zerado, suspensões]
+    parametros:
+      janela_meses: 24
+      nota_fatura_por_atraso_em_dias:
+        - {ate_dias: 0, nota: 1.0}
+        - {ate_dias: 5, nota: 0.7}
+        - {ate_dias: 15, nota: 0.4}
+        - {ate_dias: 30, nota: 0.15}
+        - {acima_de_dias: 30, nota: 0.0}
+      nota_fatura_em_aberto: 0.0
+      nota_mes_pre_pago_por_dias_sem_saldo:
+        - {sem_ocorrencia: true, nota: 1.0}
+        - {ate_dias: 7, nota: 0.6}
+        - {acima_de_dias: 7, nota: 0.2}
+      penalidade_por_suspensao: 10
+      valor_sem_dados: 50
+    observacao: Cada fatura paga e cada mês pré-pago vira uma nota de 0 a 1. O fator é a média das notas.
+
+  - id: estabilidade
+    rotulo: Estabilidade do número
+    versao: "1.0.0"
+    formula: "máximo(0, 100 − 30 × trocas de chip na janela − 20 se houve portabilidade de entrada há até 365 dias)"
+    entradas: [trocas de chip, portabilidade de entrada]
+    parametros:
+      janela_meses: 24
+      penalidade_por_troca_de_chip: 30
+      penalidade_por_portabilidade_recente: 20
+      portabilidade_recente_dias: 365
+    observacao: Hoje o modelo dá peso zero a este fator (sem poder preditivo na base de treino), mas ele continua explicado.
+
+  - id: consistencia
+    rotulo: Consistência do valor gasto
+    versao: "1.0.0"
+    formula: "100 × máximo(0, 1 − CV ÷ 0,8), com CV = desvio padrão ÷ média do gasto mensal (recargas + fatura)"
+    entradas: [valor mensal de recargas, valor mensal da fatura]
+    parametros:
+      janela_meses: 24
+      cv_que_zera_o_fator: 0.8
+      minimo_de_meses_com_gasto: 2
+      valor_sem_dados: 50
+    observacao: Considera só meses com gasto maior que zero.
+
+modelo:
+  versao: "1.0.0"
+  formula_score: "score = pontos_base + Σ pontos_fator, limitado a 0–1000"
+  formula_pontos_fator: "pontos_fator = −B × peso × (valor − média) ÷ 100"
+  formula_escala: "B = (750 − 550) ÷ (ln((1 − 0,10) ÷ 0,10) − ln((1 − 0,25) ÷ 0,25))"
+  formula_probabilidade: "P(inadimplência) = 1 ÷ (1 + e^(−(intercepto + Σ peso × valor ÷ 100)))"
+  parametros:
+    pd_aprovacao: 0.10
+    pd_revisao: 0.25
+    score_minimo: 0
+    score_maximo: 1000
+  observacao: Regressão logística com sinais monotônicos (melhorar um fator nunca reduz o score). Pesos e médias vêm do modelo treinado (/modelo).
+
+politica:
+  versao: "1.0.0"
+  parametros:
+    limiar_aprovacao: 750
+    limiar_revisao: 550
+    meses_minimos_para_confianca_alta: 6
+    fatores_minimos_para_confianca_alta: 3
+    limite_maximo: 4000
+    prazos_meses: [6, 12, 18]
+  formulas:
+    limite_sugerido: "mínimo(4000, arredondar((score − 500) ÷ 500 × 40) × 100); zero abaixo de 550"
+    taxa_mensal_percentual: "máximo(1,9; 5,5 − (score − 550) × 0,009)"
+    parcela: "valor × i ÷ (1 − (1 + i)^−n), tabela Price, com i = taxa mensal"
+  regras_de_supervisao:
+    - Score entre 550 e 749 sempre vai para um analista.
+    - Com histórico curto ou poucos fatores, o agente não aprova nem recusa sozinho.
+    - Escopos obrigatórios (permanência, recargas, pontualidade) ausentes rejeitam a análise.
+    - Fator opcional não autorizado entra com o pior valor da base, então omitir nunca aumenta o score.
