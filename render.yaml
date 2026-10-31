@@ -1,0 +1,62 @@
+# Blueprint do Render: os três serviços do backend no plano gratuito.
+# No painel do Render: New → Blueprint → escolha este repositório.
+# BANCO_DB_URL e CONSUMIDOR_DB_URL são pedidos na criação (Postgres do Neon, no formato
+# postgresql+psycopg://usuario:senha@host/banco?sslmode=require).
+# O front fica na Vercel e chama os três pelo proxy /api/* (só do servidor), então não há CORS a liberar.
+
+envVarGroups:
+  - name: scorelyne-comum
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: OPERADORA_URL
+        value: https://scorelyne-operadora.onrender.com
+      - key: CREDOR_URL
+        value: https://scorelyne-credor.onrender.com
+      # O consumidor usa esta chave para enviar pedidos ao credor; o credor a confere.
+      - key: CREDOR_SERVICE_KEY
+        generateValue: true
+
+services:
+  - type: web
+    name: scorelyne-operadora
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --no-sync operadora servir --host 0.0.0.0 --porta $PORT
+    healthCheckPath: /saude
+    envVars:
+      - fromGroup: scorelyne-comum
+
+  - type: web
+    name: scorelyne-credor
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --no-sync banco servir --host 0.0.0.0 --porta $PORT
+    healthCheckPath: /saude
+    envVars:
+      - fromGroup: scorelyne-comum
+      - key: BANCO_DB_URL
+        sync: false
+      - key: CREDOR_JWT_SECRET
+        generateValue: true
+      - key: CREDOR_AGENT_KEY
+        generateValue: true
+
+  - type: web
+    name: scorelyne-consumidor
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --no-sync consumidor servir --host 0.0.0.0 --porta $PORT
+    healthCheckPath: /saude
+    envVars:
+      - fromGroup: scorelyne-comum
+      - key: CONSUMIDOR_DB_URL
+        sync: false
+      - key: CONSUMIDOR_JWT_SECRET
+        generateValue: true
